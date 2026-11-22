@@ -76,6 +76,31 @@ jobs:
       - name: 运行 ESLint
         run: npm run lint
 
+  # 2026-11-22：依赖高危漏洞门禁（npm audit）。--audit-level=high 表示仅在存在
+  # high/critical 时失败，moderate（多为 devDependencies 传递依赖）不阻断。
+  # 本地已修复 body-parser/follow-redirects/multer 三个高危；此 job 防止高危回归。
+  npm-audit:
+    name: 依赖安全审计（npm audit high+ 门禁）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: 按锁文件安装
+        run: npm ci
+
+      - name: 审计高危依赖（high/critical 阻断）
+        run: npm audit --audit-level=high
+
   # P2-68：server/test/ 下的 node:test 套件（security.test.js 等）此前从未进 CI，
   # 通过 npm run test:node（node --test --test-force-exit test/*.test.js）补上执行通道。
   # P3-145：--test-force-exit（Node ≥20.14）取代进程内强退定时器，保证进程退出性且不掩盖失败。
