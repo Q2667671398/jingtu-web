@@ -24,6 +24,10 @@ if not exist "%JINGTU_PS1%" (
 :: window just flashes. Restore the UTF-8 BOM (EF BB BF) if it is missing.
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$p=$env:JINGTU_PS1; try { $b=[System.IO.File]::ReadAllBytes($p); if ($b.Length -lt 3 -or $b[0] -ne 239 -or $b[1] -ne 187 -or $b[2] -ne 191) { $n=New-Object 'byte[]' ($b.Length + 3); $n[0]=239; $n[1]=187; $n[2]=191; [Array]::Copy($b, 0, $n, 3, $b.Length); [System.IO.File]::WriteAllBytes($p, $n); Write-Host '[FIX] jingtu.ps1 UTF-8 BOM restored' -ForegroundColor Yellow } } catch { Write-Host ('[WARN] BOM check skipped: ' + $_.Exception.Message) -ForegroundColor Yellow }"
 
+rem Clear any stale ERRORLEVEL environment variable: if a parent script did
+rem `set ERRORLEVEL=x`, %ERRORLEVEL% would return that literal instead of the
+rem real child exit code. Clearing restores the dynamic pseudo-variable.
+set "ERRORLEVEL="
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%JINGTU_PS1%" %*
 set "EXITCODE=%ERRORLEVEL%"
 

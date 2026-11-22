@@ -1,4 +1,4 @@
-﻿﻿#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   境途WEB 统一运维工具（PowerShell 主程序，Windows）
   ----------------------------------------------------------
@@ -488,13 +488,23 @@ function Stop-Nginx {
     } else {
         Write-Line '[提示] pid 文件缺失或已失效，跳过优雅停止，按端口直接停止' $Cfg.C_Dim
     }
-    # 兜底：直接杀掉监听 80 端口的进程（兼容被错误 -c/-p 启动、pid 文件失效的情况）
+    # 兜底：只杀掉监听本项目 80 端口的进程（兼容被错误 -c/-p 启动、pid 文件失效的情况）。
+    # 注意：绝不按进程名全局 `Get-Process nginx | Stop-Process`——同一台机器上 phpStudy/其它
+    # 站点可能也跑 nginx，那样会误杀无辜服务。worker 子进程由上面的优雅 -s stop 自行回收；
+    # 若主进程异常残留，按 ExecutablePath 限定到本项目 nginx 二进制再清理，而非按名字。
     $nginxPid = Test-Port $NginxPort
     if ($nginxPid) {
         try {
             Get-Process -Id $nginxPid -ErrorAction Stop | Stop-Process -Force -ErrorAction Stop
-            # nginx 主进程退出后，可能留下 worker 子进程仍占用 80 端口，一并清理
-            Get-Process -Name 'nginx' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        } catch {}
+        # 仅清理可执行文件路径确实属于本项目 nginx 的残留 worker（路径归一化后比较）
+        try {
+            $binPath = if ($rt.Bin) { [System.IO.Path]::GetFullPath($rt.Bin).TrimEnd('\') } else { $null }
+            if ($binPath) {
+                Get-CimInstance Win32_Process -Filter "Name='nginx.exe'" -ErrorAction SilentlyContinue | Where-Object {
+                    $_.ExecutablePath -and ([System.IO.Path]::GetFullPath($_.ExecutablePath).TrimEnd('\')) -ieq $binPath
+                } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {} }
+            }
         } catch {}
         $wait = 0
         while ($null -ne (Test-Port $NginxPort) -and $wait -lt 6) { Start-Sleep -Seconds 1; $wait++ }
@@ -672,6 +682,9 @@ function Clean-StrayCmdWindows {
         $parentName = if ($parent) { $parent.Name } else { '' }
         $safeParents = @('explorer.exe','Code.exe','code.exe','WindowsTerminal.exe','wt.exe','conhost.exe','powershell.exe','pwsh.exe','bash.exe')
         if ($safeParents -contains $parentName) { $skipped++; continue }
+        # 关键：只清理「默认标题」的 cmd（漏出来的刷屏窗口）。有标题的窗口属于其它工具
+        # （java/python/计划任务/安装包等），误杀会打断用户工作——注释与实现此前不一致。
+        if ($p.MainWindowTitle -and $p.MainWindowTitle.Trim() -ne '') { $skipped++; continue }
         $cl = $p.CommandLine
         if ($cl -and ($cl -match 'npx|cos-mcp|mcp-server|cnb-mcp|cloudbase-mcp|panel-server|jingtu')) { $skipped++; continue }
         try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $killed++ } catch { $skipped++ }
@@ -689,7 +702,9 @@ function Copy-Robocopy {
         [string[]]$ExcludeDir = @(),
         [string[]]$ExcludeFile = @()
     )
-    if (-not (Test-Path $src)) { return }
+    # 源目录不存在视为「无需复制」（可选目录，如 tools/），返回 $true 表示非失败；
+    # 这样调用方可以统一用返回值判断 robocopy 真失败（exit code >= 8）。
+    if (-not (Test-Path $src)) { return $true }
     New-Item -ItemType Directory -Path (Split-Path $dst) -Force | Out-Null
     $a = @($src, $dst, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NC', '/NS', '/NP', '/R:1', '/W:1')
     foreach ($d in $ExcludeDir) { $a += @('/XD', $d) }
@@ -751,28 +766,28 @@ function Export-Site {
     New-Item -ItemType Directory -Path $staging -Force | Out-Null
 
     Write-Step '复制 server 后端代码...'
-    Copy-Robocopy (Join-Path $Root 'server') (Join-Path $staging 'server') @('node_modules', 'coverage', '__tests__', 'tests', 'test', 'logs', '_jt_trash', 'ai-scratch', 'data') @('*.log', 'session.json', '_*.js', '_*.php', '_*.ps1', 'out.log', 'activation-codes.json')
+    if (-not (Copy-Robocopy (Join-Path $Root 'server') (Join-Path $staging 'server') @('node_modules', 'coverage', '__tests__', 'tests', 'test', 'logs', '_jt_trash', 'ai-scratch', 'data') @('*.log', 'session.json', '_*.js', '_*.php', '_*.ps1', 'out.log', 'activation-codes.json'))) { throw '导出失败：复制 server 后端代码 时 robocopy 返回错误' }
 
     Write-Step '复制 public 前端资源...'
-    Copy-Robocopy (Join-Path $Root 'public') (Join-Path $staging 'public') @('ai-scratch', '_jt_trash') @()
+    if (-not (Copy-Robocopy (Join-Path $Root 'public') (Join-Path $staging 'public') @('ai-scratch', '_jt_trash') @())) { throw '导出失败：复制 public 前端资源 时 robocopy 返回错误' }
 
     Write-Step '复制 assets 媒体资源...'
     if ($IncludeData) {
-        Copy-Robocopy (Join-Path $Root 'assets') (Join-Path $staging 'assets') @('_jt_trash') @()
+        if (-not (Copy-Robocopy (Join-Path $Root 'assets') (Join-Path $staging 'assets') @('_jt_trash') @())) { throw '导出失败：复制 assets 媒体资源(含数据) 时 robocopy 返回错误' }
     } else {
-        Copy-Robocopy (Join-Path $Root 'assets') (Join-Path $staging 'assets') @('album', 'avatar-cache', '_jt_trash') @()
+        if (-not (Copy-Robocopy (Join-Path $Root 'assets') (Join-Path $staging 'assets') @('album', 'avatar-cache', '_jt_trash') @())) { throw '导出失败：复制 assets 媒体资源(不含数据) 时 robocopy 返回错误' }
     }
 
     Write-Step '复制 docs / deploy / tools / panel...'
-    Copy-Robocopy (Join-Path $Root 'docs') (Join-Path $staging 'docs') @('_jt_trash') @()
-    Copy-Robocopy (Join-Path $Root 'deploy') (Join-Path $staging 'deploy') @('_jt_trash') @()
-    Copy-Robocopy (Join-Path $Root 'tools') (Join-Path $staging 'tools') @('_jt_trash') @('_*.py', '_*.js', '_*.png', '_*.md')
+    if (-not (Copy-Robocopy (Join-Path $Root 'docs') (Join-Path $staging 'docs') @('_jt_trash') @())) { throw '导出失败：复制 docs 时 robocopy 返回错误' }
+    if (-not (Copy-Robocopy (Join-Path $Root 'deploy') (Join-Path $staging 'deploy') @('_jt_trash') @())) { throw '导出失败：复制 deploy 时 robocopy 返回错误' }
+    if (-not (Copy-Robocopy (Join-Path $Root 'tools') (Join-Path $staging 'tools') @('_jt_trash') @('_*.py', '_*.js', '_*.png', '_*.md'))) { throw '导出失败：复制 tools 时 robocopy 返回错误' }
     # P3-22④：jingtu.ps1/sh 此前漏掉 panel/ 目录（面板源码不随交付包走），对齐 export-site.ps1 白名单
-    Copy-Robocopy (Join-Path $Root 'panel') (Join-Path $staging 'panel') @('backup', '_jt_trash') @('panel-auth.json')
+    if (-not (Copy-Robocopy (Join-Path $Root 'panel') (Join-Path $staging 'panel') @('backup', '_jt_trash') @('panel-auth.json'))) { throw '导出失败：复制 panel 时 robocopy 返回错误' }
 
     if ($IncludeData) {
         Write-Step '复制 uploads 上传文件...'
-        Copy-Robocopy (Join-Path $Root 'uploads') (Join-Path $staging 'uploads') @() @()
+        if (-not (Copy-Robocopy (Join-Path $Root 'uploads') (Join-Path $staging 'uploads') @() @())) { throw '导出失败：复制 uploads 上传文件 时 robocopy 返回错误' }
     }
 
     Write-Step '复制根目录配置文件...'
@@ -798,8 +813,16 @@ function Export-Site {
 
     Write-Step '创建压缩包...'
     if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir -Force | Out-Null }
-    if (Test-Path $outFile) { Remove-Item $outFile -Force }
-    Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $outFile -CompressionLevel Optimal
+    # 先压缩到临时文件、成功后再替换旧包：避免压缩中途失败时旧包已被删除、无回滚可用。
+    $tmpZip = Join-Path $OutDir ('.' + [guid]::NewGuid().ToString('N') + '.tmp.zip')
+    try {
+        Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $tmpZip -CompressionLevel Optimal -ErrorAction Stop
+        if (Test-Path $outFile) { Remove-Item $outFile -Force }
+        Move-Item -LiteralPath $tmpZip -Destination $outFile -Force
+    } catch {
+        if (Test-Path $tmpZip) { Remove-Item $tmpZip -Force -ErrorAction SilentlyContinue }
+        throw ('创建压缩包失败：' + $_.Exception.Message)
+    }
 
     $staged = Get-ChildItem $staging -Recurse -File
     $pkgSize = (Get-Item $outFile).Length / 1MB
@@ -814,9 +837,13 @@ function Export-Site {
     Write-Host ''
     }
     finally {
-        # P3-22①：成功/红线拦截/任何异常路径统一清理 staging（对齐 jingtu.sh 的 EXIT trap 语义）
-        if ($staging -and (Test-Path $staging) -and $staging -like 'jingtu-export-*') {
-            Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+        # P3-22①：成功/红线拦截/任何异常路径统一清理 staging（对齐 jingtu.sh 的 EXIT trap 语义）。
+        # 修复：$staging 是绝对路径（%TEMP%\jingtu-export-<guid>），直接 -like 'jingtu-export-*'
+        # 恒为 False 导致从不清理（含 uploads/album 的整包长期残留 %TEMP%）。改取末级目录名判断，
+        # 同时保留前缀白名单，避免误删任意 Test-Path 命中的目录。
+        $leaf = if ($staging) { Split-Path -Leaf $staging } else { '' }
+        if ($leaf -like 'jingtu-export-*' -and (Test-Path -LiteralPath $staging)) {
+            Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }
@@ -1029,7 +1056,8 @@ if ($cmd -eq 'export' -or $cmd -eq 'exp') {
             { $_ -in '-IncludeData','-includedata' } { $exportArgs['IncludeData'] = $true }
             '-h' { $exportArgs['_help'] = $true }
             '--help' { $exportArgs['_help'] = $true }
-            default { }
+            # 未知参数（如 -IncludeDat 拼错）此前被静默忽略，导致用户以为导出了数据其实没有——显式报错退出。
+            default { Write-Line ("[错误] export 未知参数：" + $args[$i] + "（提示：-OutDir / -Name / -IncludeData）") $Cfg.C_Fail; exit 1 }
         }
     }
     if ($exportArgs.ContainsKey('_help')) {
@@ -1043,9 +1071,11 @@ if ($cmd -eq 'export' -or $cmd -eq 'exp') {
 }
 
 switch -Regex ($cmd) {
-    '^start$'           { Start-Site;  exit 0 }
+    # 退出码可观测性：start/restart 后网站端口未监听视为失败（exit 1），供任务计划/CI 检测。
+    # 其它命令（stop/status 等）的"未运行"多为预期状态，保持 exit 0。
+    '^start$'           { Start-Site; if ($null -eq (Test-Port $SitePort)) { exit 1 }; exit 0 }
     '^stop$'            { Stop-Site; Stop-Panel; Stop-Nginx; Stop-MySql; exit 0 }
-    '^restart$'         { Restart-Site;exit 0 }
+    '^restart$'         { Restart-Site; if ($null -eq (Test-Port $SitePort)) { exit 1 }; exit 0 }
     '^panel-start$'     { Start-Panel; exit 0 }
     '^panel-stop$'      { Stop-Panel;  exit 0 }
     '^panel-restart$'   { Restart-Panel; exit 0 }
