@@ -81,6 +81,18 @@ function applyTheme(config) {
   html.style.setProperty('--accent', accent);
   html.style.setProperty('--accent2', accent + 'cc');
   html.style.setProperty('--hover', accent + '1a');
+  // theme-color 随主题同步：移动端浏览器地址栏与页面背景融合（PWA/Web App 最佳实践）。
+  // 从实际 CSS 变量 --bg 取值，避免硬编码与主题定义漂移。
+  try {
+    let meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'theme-color');
+      document.head.appendChild(meta);
+    }
+    const bg = getComputedStyle(html).getPropertyValue('--bg').trim();
+    if (bg) meta.setAttribute('content', bg);
+  } catch (e) { /* 非关键增强，失败不影响主题 */ }
   const themeBtn = document.getElementById('themeBtn');
   if (themeBtn) {
     const brightness = computeBrightness(config);

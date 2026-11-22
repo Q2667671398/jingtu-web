@@ -283,9 +283,9 @@
     const ul = $('collFolderList');
     if (!ul) return;
     if (state.scope === 'public') { ul.innerHTML = '<li class="coll-folder public-hint">🌐 ' + __('collections.discover') + '</li>'; return; }
-    const base = `<li class="coll-folder ${state.folder === 'all' ? 'active' : ''}" data-folder="all"><span>${__('collections.all')}</span><span class="coll-folder-count" id="collCountAll">0</span></li>
-      <li class="coll-folder ${state.folder === 'none' ? 'active' : ''}" data-folder="none"><span>${__('collections.ungrouped')}</span><span class="coll-folder-count" id="collCountNone">0</span></li>`;
-    const items = state.folders.map(f => `<li class="coll-folder ${String(state.folder) === String(f.id) ? 'active' : ''}" data-folder="${f.id}"><span class="coll-folder-name" title="${escAttr(__('collections.rename_folder'))}">${esc(f.name)}</span><span class="coll-folder-count">${f.item_count || 0}</span><span class="coll-folder-edit" data-rename="${f.id}" title="${escAttr(__('collections.rename_folder'))}">✏️</span><span class="coll-folder-del" data-del="${f.id}" title="${escAttr(__('auto_collections_29'))}">×</span></li>`).join('');
+    const base = `<li class="coll-folder ${state.folder === 'all' ? 'active' : ''}" data-folder="all" tabindex="0" role="button" aria-label="${escAttr(__('collections.all'))}"><span>${__('collections.all')}</span><span class="coll-folder-count" id="collCountAll">0</span></li>
+      <li class="coll-folder ${state.folder === 'none' ? 'active' : ''}" data-folder="none" tabindex="0" role="button" aria-label="${escAttr(__('collections.ungrouped'))}"><span>${__('collections.ungrouped')}</span><span class="coll-folder-count" id="collCountNone">0</span></li>`;
+    const items = state.folders.map(f => `<li class="coll-folder ${String(state.folder) === String(f.id) ? 'active' : ''}" data-folder="${f.id}" tabindex="0" role="button" aria-label="${escAttr(f.name)}"><span class="coll-folder-name" title="${escAttr(__('collections.rename_folder'))}">${esc(f.name)}</span><span class="coll-folder-count">${f.item_count || 0}</span><span class="coll-folder-edit" data-rename="${f.id}" title="${escAttr(__('collections.rename_folder'))}">✏️</span><span class="coll-folder-del" data-del="${f.id}" title="${escAttr(__('auto_collections_29'))}">×</span></li>`).join('');
     ul.innerHTML = base + items;
     qsa('.coll-folder', ul).forEach(li => {
       li.addEventListener('click', (e) => {
@@ -310,6 +310,14 @@
         state.folder = li.getAttribute('data-folder');
         renderFolders();
         if (state.scope === 'mine') loadItems(true);
+      });
+      // 键盘可达：分组项 tabindex=0/role=button，Enter/Space 等同点击（焦点在 li 本身时）
+      li.addEventListener('keydown', (e) => {
+        if (e.target !== li) return; // 焦点在内部重命名/删除按钮时不拦截
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          li.click();
+        }
       });
     });
   }

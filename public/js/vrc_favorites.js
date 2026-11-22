@@ -163,7 +163,7 @@
     ul.innerHTML = list.map(g => {
       const label = g.name ? `${esc(g.displayName || g.name)}` : `<span>${__('collections.all', '全部')}</span>`;
       const count = g.count != null ? `<span class="coll-folder-count">${g.count}</span>` : '';
-      return `<li class="coll-folder ${String(state.group) === String(g.name) ? 'active' : ''}" data-group="${escAttr(g.name || '')}" data-type="${escAttr(g.type || state.kind)}" title="${escAttr(g.name || __('collections.all'))}">${label}${count}</li>`;
+      return `<li class="coll-folder ${String(state.group) === String(g.name) ? 'active' : ''}" data-group="${escAttr(g.name || '')}" data-type="${escAttr(g.type || state.kind)}" title="${escAttr(g.name || __('collections.all'))}" tabindex="0" role="button" aria-label="${escAttr(g.displayName || g.name || __('collections.all'))}">${label}${count}</li>`;
     }).join('');
     qsa('.coll-folder', ul).forEach(li => {
       li.addEventListener('click', () => {
@@ -174,6 +174,13 @@
         }
         renderGroups();
         onFilterChange();
+      });
+      // 键盘可达：Enter/Space 等同点击
+      li.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          li.click();
+        }
       });
     });
   }
