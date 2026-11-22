@@ -157,11 +157,33 @@ function _verifyClient(info, cb) {
       logger && logger.warn('[ws]', 'verifyClient: no auth session', { ip: req.ip, fails: _wsAuthFailStreak });
       return cb(false, 401, 'Unauthorized');
     }
-    _wsAuthFailStreak = 0;
-    // 将认证后的 userId / sid 挂到 req 上，供 connection 回调使用
-    req.wsUserId = sessionData.userId;
-    req.wsSid = sid;
-    cb(true);
+    // P2-QA：封禁/软删复核。HTTP 层（server.js:525）会在每个 /api 请求查 users.banned，
+    // 但 WS 是独立通道：已被封禁的用户若保持连接且不发 HTTP 请求，可持续收/发私信与在线广播，
+    // 绕过 HTTP 层的封禁 fail-closed。这里在握手时做同口径复核，查询失败按 fail-closed 拒绝。
+    let pool;
+    try { pool = getPool(); } catch (_) { pool = null; }
+    if (!pool) {
+      logger && logger.error('[ws]', 'verifyClient: 封禁校验无法获取连接池，拒绝连接（fail-closed）', { ip: req.ip });
+      return cb(false, 503, 'Session store unavailable');
+    }
+    pool.query('SELECT banned FROM users WHERE id=? AND deleted_at IS NULL', [sessionData.userId])
+      .then(([rows]) => {
+        if (rows.length === 0 || rows[0].banned) {
+          _wsAuthFailStreak++;
+          logger && logger.warn('[ws]', 'verifyClient: 封禁/软删用户拒绝 WS 连接', { userId: sessionData.userId, ip: req.ip });
+          return cb(false, 401, 'Account disabled');
+        }
+        _wsAuthFailStreak = 0;
+        // 将认证后的 userId / sid 挂到 req 上，供 connection 回调使用
+        req.wsUserId = sessionData.userId;
+        req.wsSid = sid;
+        cb(true);
+      })
+      .catch((dbErr) => {
+        // 与 HTTP 层一致：封禁校验依赖数据库，查询失败 fail-closed，避免封禁绕过。
+        logger && logger.error('[ws]', 'verifyClient: 封禁状态校验失败，拒绝连接（fail-closed）', { err: dbErr.message, ip: req.ip });
+        return cb(false, 503, 'Session store unavailable');
+      });
   });
 }
 
@@ -333,10 +355,11 @@ function setupWebSocket(server) {
             // WS-2: displayName/avatarUrl 必须以数据库为准——客户端声明的昵称/头像可被用来冒充他人。
             try {
               const [uvRows] = await getPool().query(
-                `SELECT online_visible, display_name, avatar_type, custom_avatar_path, vrchat_avatar_url, vrchat_id AS vrchatId
+                `SELECT online_visible, display_name, avatar_type, custom_avatar_path, vrchat_avatar_url, vrchat_id AS vrchatId, banned
                  FROM users WHERE id = ? AND deleted_at IS NULL LIMIT 1`, [userId]);
-              if (uvRows.length === 0) {
-                try { ws.close(1008, 'User not found'); } catch (e) {}
+              if (uvRows.length === 0 || uvRows[0].banned) {
+                // 覆盖「连接存续期间被封禁」：HTTP 层已封禁，但旧 WS 仍在收发私信/在线广播。
+                try { ws.close(1008, uvRows.length === 0 ? 'User not found' : 'Account disabled'); } catch (e) {}
                 return;
               }
               const u = uvRows[0];
@@ -1457,6 +1480,34 @@ function getOnlineUsers() {
   }));
 }
 
+// 主动断开指定用户的所有 WS 连接：封禁/强制下线时即时生效，
+// 不必等该用户下次发 online 心跳才被封禁复核发现。返回断开的连接数。
+function closeUserConnections(userId, code = 1008, reason = 'Account disabled') {
+  const conns = userWsMap.get(userId);
+  if (!conns || conns.size === 0) {
+    onlineUsers.delete(userId);
+    return 0;
+  }
+  let closed = 0;
+  for (const ws of conns) {
+    try {
+      if (ws.readyState === 1 || ws.readyState === 0) {
+        ws.close(code, reason);
+        closed++;
+      } else if (ws.readyState === 2) {
+        // CLOSING：交给既有流程收尾
+        closed++;
+      }
+    } catch (e) {
+      try { ws.terminate(); } catch (_) {}
+    }
+  }
+  conns.clear();
+  onlineUsers.delete(userId);
+  invalidateLocationVisibleCache();
+  return closed;
+}
+
 module.exports = {
   setupWebSocket,
   setSessionSecret,
@@ -1471,6 +1522,7 @@ module.exports = {
   getOnlineUsers,
   invalidateGroupMemberCache,
   getRtcRoomStats,
+  closeUserConnections,
   onlineUsers,
   userWsMap
 };

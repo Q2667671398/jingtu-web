@@ -103,18 +103,22 @@ function registerResetRoutes(router) {
       `SELECT id, display_name, login_id FROM users WHERE email = ? AND deleted_at IS NULL AND banned = 0`,
       [email]
     );
-    // AUTH-3/4: 无论账号是否存在都返回真实随机 token（不存在时该 token 无对应验证码，
-    // verify/reset 必失败），响应结构完全对称，杜绝「token:null vs 64hex」的存在性枚举 oracle。
+    // AUTH-3/4: 无论账号是否存在都返回真实随机 token 与同构响应，杜绝存在性枚举 oracle。
     const token = crypto.randomBytes(32).toString('hex');
-    if (users.length === 0) {
-      return ok(res, { message: '如果该邮箱已注册，验证码已发送到您的邮箱', token });
-    }
-
-    const user = users[0];
     // AUTH-3: OTP 熵提升至 8 位数字（~26.6 bit，原 6 位仅 ~20 bit），配合 5 次尝试上限
     const code = crypto.randomInt(10000000, 100000000).toString();
     const expireAt = Date.now() + 15 * 60 * 1000;
 
+    if (users.length === 0) {
+      // M-1：不存在的邮箱此前只返回 token、不写 state，导致 verify 阶段返回 expired，
+      // 而真实邮箱错码返回 mismatch——响应可区分，构成邮箱注册状态枚举 oracle。
+      // 这里写入「影子 state」：随机 code（攻击者无法猜中）、不关联真实 uid、不持久化、不发邮件，
+      // 使 verify/reset 的响应路径与真实邮箱完全同构。
+      resetTokens.set(token, { userId: null, dummy: true, code, expireAt, attempts: 0 });
+      return ok(res, { message: '如果该邮箱已注册，验证码已发送到您的邮箱', token });
+    }
+
+    const user = users[0];
     resetTokens.set(token, { userId: user.id, code, expireAt, attempts: 0 });
     persistResetToken(token, { userId: user.id, code, expireAt });
 
@@ -177,7 +181,9 @@ function registerResetRoutes(router) {
   try {
     restoreResetTokensFromDb();
     const { token, code, newPassword } = req.body;
-    if (!token || !newPassword) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
+    // code 必须是字符串：consumeResetCode 内部调用 code.trim()，非字符串会抛 TypeError 变成 500。
+    // 与 /verify-reset-code 的校验口径保持一致。
+    if (!token || !newPassword || typeof code !== 'string' || !code) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
 
     const result = consumeResetCode(token, code);
     if (result.expired) {
@@ -195,6 +201,12 @@ function registerResetRoutes(router) {
     const strength = validatePasswordStrength(newPassword);
     if (!strength.valid) {
       return fail(res, 400, '密码强度不足', { details: strength.errors });
+    }
+
+    // M-1：影子 state（不存在的邮箱）即使被撞对随机码，也只返回与真实重置同构的响应，
+    // 绝不触碰任何账号，避免泄露「该邮箱未注册」。
+    if (state.dummy) {
+      return ok(res, { message: '密码重置成功，请使用新密码登录' });
     }
 
     const pwdHash = await hashPassword(newPassword);

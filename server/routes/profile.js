@@ -81,7 +81,7 @@ const profileUploadLimiter = rateLimit({
   store: hybridStore('profile-upload'),
   keyGenerator: (req) => {
     const uid = req.session && req.session.userId;
-    return uid ? `u_${uid}` : `ip_${req.ip}`;
+    return uid ? `u_${uid}` : `ip_${rateLimit.ipKeyGenerator(req.ip)}`;
   },
   message: { error: '上传请求过于频繁，请稍后再试', retryAfter: 60 }
 });

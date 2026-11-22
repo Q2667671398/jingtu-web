@@ -174,6 +174,63 @@ describe('P2-148 auth.js 密码与权限', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test('requirePerm 显式拒绝优先：显式 0 拒绝 / 未配置放行 / 任意组 1 覆盖放行', async () => {
+    // isPermExplicitlyDenied 的三条 SQL：membership / 父链 / MAX(permission_value)
+    const setup = (memberRows, groupRows, permRows) => mockQueryBySql([
+      [/user_group_membership/, memberRows],
+      [/FROM permission_groups/, groupRows],
+      [/MAX\(permission_value\)/, permRows]
+    ]);
+
+    // ① 显式 0 → 拒绝
+    setup([[{ group_id: 3 }]], [[{ id: 3, parentId: null }]], [[{ cfg: 1, allowed: 0 }]]);
+    expect(await auth.isPermExplicitlyDenied(5, 'can_create_event')).toBe(true);
+
+    // ② 未配置（cfg=0）→ 放行（向后兼容核心）
+    setup([[{ group_id: 3 }]], [[{ id: 3, parentId: null }]], [[{ cfg: 0, allowed: 0 }]]);
+    expect(await auth.isPermExplicitlyDenied(5, 'can_create_event')).toBe(false);
+
+    // ③ 用户无组 → 放行
+    setup([[]], [[{ id: 3, parentId: null }]], [[{ cfg: 0, allowed: 0 }]]);
+    expect(await auth.isPermExplicitlyDenied(5, 'can_create_event')).toBe(false);
+
+    // ④ 父链有 1 覆盖 → MAX=1 → 放行
+    setup([[{ group_id: 3 }]], [[{ id: 3, parentId: 2 }, { id: 2, parentId: null }]], [[{ cfg: 2, allowed: 1 }]]);
+    expect(await auth.isPermExplicitlyDenied(5, 'can_create_event')).toBe(false);
+  });
+
+  test('requirePerm 中间件：超管永放行 / 显式拒绝 403 / DB 异常 fail-open', async () => {
+    const mw = auth.requirePerm('can_create_event');
+    const mkRes = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn() });
+
+    // 超管不受限（不查权限表）
+    const next1 = jest.fn();
+    await mw({ session: { userId: 5, role: 'super_admin' } }, mkRes(), next1);
+    expect(next1).toHaveBeenCalled();
+
+    // 普通用户 + 显式拒绝 → 403
+    mockQueryBySql([
+      [/SELECT role FROM users/, [[{ role: 'member' }]]],
+      [/user_group_membership/, [[{ group_id: 3 }]]],
+      [/FROM permission_groups/, [[{ id: 3, parentId: null }]]],
+      [/MAX\(permission_value\)/, [[{ cfg: 1, allowed: 0 }]]]
+    ]);
+    const res2 = mkRes(), next2 = jest.fn();
+    await mw({ session: { userId: 5, role: 'member' } }, res2, next2);
+    expect(res2.status).toHaveBeenCalledWith(403);
+    expect(next2).not.toHaveBeenCalled();
+
+    // DB 异常 → fail-open 放行
+    mockPool.query.mockImplementation((sql) => {
+      if (/SELECT role FROM users/.test(sql)) return Promise.resolve([[{ role: 'member' }]]);
+      return Promise.reject(new Error('DB down'));
+    });
+    const res3 = mkRes(), next3 = jest.fn();
+    await mw({ session: { userId: 5, role: 'member' } }, res3, next3);
+    expect(next3).toHaveBeenCalled();
+    expect(res3.status).not.toHaveBeenCalledWith(403);
+  });
+
   test('requireSuperAdmin 仅超管放行', async () => {
     const next = jest.fn();
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
@@ -517,6 +574,26 @@ describe('P2-148 auth_reset_service 找回码生命周期', () => {
     const r6 = await request(createApp()).post('/api/auth/verify-reset-code').send({ token: t2, code: '000000' });
     expect(r6.status).toBe(400);
     expect(r6.body.error).toContain('过期');
+  });
+
+  test('M-1 邮箱注册状态不可枚举：未知邮箱 verify 与已知邮箱错码响应一致', async () => {
+    // 未知邮箱：写影子 state，错码应返回「验证码错误」而非「已过期」
+    mockQueryBySql([[/(banned = 0)/, [[]]]]);
+    const miss = await request(createApp()).post('/api/auth/forgot-password').send({ email: 'nobody@x.com' });
+    const missVerify = await request(createApp())
+      .post('/api/auth/verify-reset-code').send({ token: miss.body.token, code: '00000000' });
+    expect(missVerify.status).toBe(400);
+
+    // 已知邮箱：同样错码
+    mockQueryBySql([[/(banned = 0)/, [[{ id: 9, display_name: 'D', login_id: 'd' }]]]]);
+    const hit = await request(createApp()).post('/api/auth/forgot-password').send({ email: 'd@x.com' });
+    const hitVerify = await request(createApp())
+      .post('/api/auth/verify-reset-code').send({ token: hit.body.token, code: '00000000' });
+    expect(hitVerify.status).toBe(400);
+
+    // 两者响应完全一致：既无 expired 差异，也无文案差异
+    expect(missVerify.body).toEqual(hitVerify.body);
+    expect(JSON.stringify(missVerify.body)).toContain('验证码错误');
   });
 
   test('reset-password 完整链路：改密+清会话', async () => {

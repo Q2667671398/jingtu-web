@@ -15,6 +15,8 @@ const {
   getAvatarUrl, ROLE_LEVEL
 } = require('../auth');
 const activationCodes = require('../activation_code_service');
+// 封禁即时断连：主动关闭被封用户的 WS 连接，不必等下一次心跳复核发现。
+const wsService = require('../ws_service');
 
 module.exports = function createAdminUsersRouter() {
   const router = express.Router();
@@ -154,6 +156,9 @@ module.exports = function createAdminUsersRouter() {
       if (!guard.ok) return;
       await getPool().query(`UPDATE users SET banned=1 WHERE id=?`, [req.params.id]);
       await getPool().query(`DELETE FROM notifications WHERE user_id = ?`, [req.params.id]);
+      // 即时断连：封禁落库后立即关闭该用户所有 WS，避免其不刷新页面仍持有实时通道。
+      // 断连失败不应回滚封禁（DB 才是权威），故吞掉异常仅记录。
+      try { wsService.closeUserConnections(Number(req.params.id), 1008, 'Account disabled'); } catch (e) { /* 忽略：心跳复核兜底 */ }
       await logOper(req.session.userId, '封禁用户', `封禁用户 ${guard.targetUser.display_name} (#${req.params.id})`);
       ok(res);
     }

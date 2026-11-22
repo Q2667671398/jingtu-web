@@ -122,7 +122,8 @@ const sendDirectMsgLimiter = rateLimit({
   store: hybridStore('chat-send-direct'),
   keyGenerator: (req) => {
     const uid = req.session && req.session.userId;
-    return uid ? `u_${uid}` : `ip_${req.ip}`;
+    // 游客按 IP 兜底时必须走 ipKeyGenerator，否则 IPv6 地址会被 express-rate-limit v8 判为可绕过并拒绝启动。
+    return uid ? `u_${uid}` : `ip_${rateLimit.ipKeyGenerator(req.ip)}`;
   },
   message: { ok: false, error: '消息发送过快，请稍后再试' }
 });
@@ -378,7 +379,7 @@ const sendGroupMsgLimiter = rateLimit({
   store: hybridStore('chat-send-group'),
   keyGenerator: (req) => {
     const uid = req.session && req.session.userId;
-    return uid ? `u_${uid}` : `ip_${req.ip}`;
+    return uid ? `u_${uid}` : `ip_${rateLimit.ipKeyGenerator(req.ip)}`;
   },
   message: { ok: false, error: '消息发送过快，请稍后再试' }
 });

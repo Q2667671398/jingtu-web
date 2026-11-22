@@ -85,7 +85,9 @@ router.post('/init', initLimiter, async (req, res) => {
           `MYSQL_PASSWORD=${activeDb.password || ''}`,
           `MYSQL_DATABASE=${activeDbName || process.env.MYSQL_DATABASE || 'jingtu_group'}`,
           `SESSION_SECRET=${crypto.randomBytes(48).toString('hex')}`,
-          `ENCRYPT_KEY=${crypto.randomBytes(48).toString('hex')}`,
+          // ENCRYPT_KEY 必须是 64 位十六进制（32 字节）：auth.js/server.js 均以 length===64 校验，
+          // 生产环境生成 96 位会导致下次重启被 fail-fast 拒绝启动、且 AES 解密恒失败。与 setup.js:453 保持一致。
+          `ENCRYPT_KEY=${crypto.randomBytes(32).toString('hex')}`,
           `RECOVERY_TOKEN=${crypto.randomBytes(32).toString('hex')}`,
           'NODE_ENV=production',
           'PORT=3456',
@@ -114,9 +116,13 @@ router.post('/init', initLimiter, async (req, res) => {
     const user = { id: result.insertId, login_id: loginId, display_name: displayName, vrchat_id: null, vrchat_name: null, vrchat_verified: 0, role: 'super_admin', avatar_type: 'none', vrchat_avatar_url: null, custom_avatar_path: null };
     req.session.regenerate(async (err) => {
       if (err) { handleError(res, err, 'auth'); return; }
-      await buildSession(req, user);
-      await req.session.save();
-      ok(res, { user: sessionUser(req.session), message: '超级管理员创建成功' });
+      // regenerate 的回调是 async，express-session 不会 await 其返回的 Promise：
+      // 内部 await 抛错必须自行捕获，否则成为未处理拒绝并可能触发进程级退出。
+      try {
+        await buildSession(req, user);
+        await req.session.save();
+        ok(res, { user: sessionUser(req.session), message: '超级管理员创建成功' });
+      } catch (e) { handleError(res, e, 'auth/init'); }
     });
   } catch (e) {
     if (e.code === 'ER_DUP_ENTRY') return sendError(res, 400, ErrorCodes.CONFLICT, '该登录ID已被使用');
@@ -228,9 +234,11 @@ router.post('/register', registerLimiter, async (req, res) => {
     } catch {}
     req.session.regenerate(async (err) => {
       if (err) { handleError(res, err, 'auth'); return; }
-      await buildSession(req, user);
-      await req.session.save();
-      ok(res, { user: sessionUser(req.session), message: '注册成功' });
+      try {
+        await buildSession(req, user);
+        await req.session.save();
+        ok(res, { user: sessionUser(req.session), message: '注册成功' });
+      } catch (e) { handleError(res, e, 'auth/register'); }
     });
   } catch (e) {
     handleError(res, e, '[auth/register]');
@@ -456,17 +464,19 @@ router.post('/login', async (req, res) => {
 
     req.session.regenerate(async (err) => {
       if (err) { handleError(res, err, 'auth'); return; }
-      await buildSession(req, user);
-      await req.session.save();
-      // 记住账号 HttpOnly Cookie：前端 JS 读不到、攻击者无法伪造，
-      // 供登录页 /auth/preview 识别「本浏览器记住的账号」以显示真实头像（防枚举前提下）。
-      // 未勾选"记住我"时清除旧值，避免历史记住信息残留。
-      applyRememberCookie(res, user, remember);
-      await insertLoginHistory(req, { userId: user.id, loginId: user.login_id, success: 1, reason: '密码登录成功' });
       try {
-        await getPool().query(`INSERT INTO sys_oper_log (admin_vrcid, oper_type, content) VALUES (?, '用户登录', ?)`, [user.login_id, `${user.display_name} 登录`]);
-      } catch {}
-      ok(res, { user: sessionUser(req.session) });
+        await buildSession(req, user);
+        await req.session.save();
+        // 记住账号 HttpOnly Cookie：前端 JS 读不到、攻击者无法伪造，
+        // 供登录页 /auth/preview 识别「本浏览器记住的账号」以显示真实头像（防枚举前提下）。
+        // 未勾选"记住我"时清除旧值，避免历史记住信息残留。
+        applyRememberCookie(res, user, remember);
+        await insertLoginHistory(req, { userId: user.id, loginId: user.login_id, success: 1, reason: '密码登录成功' });
+        try {
+          await getPool().query(`INSERT INTO sys_oper_log (admin_vrcid, oper_type, content) VALUES (?, '用户登录', ?)`, [user.login_id, `${user.display_name} 登录`]);
+        } catch {}
+        ok(res, { user: sessionUser(req.session) });
+      } catch (e) { handleError(res, e, 'auth/login'); }
     });
   } catch (e) { 
     handleError(res, e, '[auth/login]'); 
@@ -544,12 +554,14 @@ router.post('/2fa/verify', auth2faLimiter, async (req, res) => {
     await insertLoginHistory(req, { userId: user.id, loginId: user.login_id, success: 1, reason: '两步验证通过' });
     req.session.regenerate(async (err) => {
       if (err) { handleError(res, err, 'auth'); return; }
-      await buildSession(req, user);
-      await req.session.save();
       try {
-        await getPool().query(`INSERT INTO sys_oper_log (admin_vrcid, oper_type, content) VALUES (?, '用户登录', ?)`, [user.login_id, `${user.display_name} 登录（两步验证）`]);
-      } catch {}
-      ok(res, { user: sessionUser(req.session) });
+        await buildSession(req, user);
+        await req.session.save();
+        try {
+          await getPool().query(`INSERT INTO sys_oper_log (admin_vrcid, oper_type, content) VALUES (?, '用户登录', ?)`, [user.login_id, `${user.display_name} 登录（两步验证）`]);
+        } catch {}
+        ok(res, { user: sessionUser(req.session) });
+      } catch (e) { handleError(res, e, 'auth/2fa/verify'); }
     });
   } catch (e) {
     handleError(res, e, '[auth/2fa/verify]');

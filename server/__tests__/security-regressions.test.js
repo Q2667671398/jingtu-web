@@ -224,6 +224,42 @@ describe('security regressions', () => {
     expect(files.rateLimitMiddleware).toMatch(/retryAfter:\s*60/);
   });
 
+  // 2026-11-22：自定义 keyGenerator 若用裸 req.ip 兜底，express-rate-limit v8 会抛
+  // ERR_ERL_KEY_GEN_IPV6，且 IPv4-mapped IPv6 共享同一桶可绕过限流（上游 CVE）。
+  // 守卫全量业务 JS：出现 `ip_${req.ip}` 即失败，必须走 rateLimit.ipKeyGenerator(req.ip)。
+  test('custom keyGenerators never use raw req.ip (IPv6 bypass, 2026-11-22)', () => {
+    const routesDir = path.join(repoRoot, 'server', 'routes');
+    const middlewareDir = path.join(repoRoot, 'server', 'middleware');
+    const scanDir = (dir) => fs.readdirSync(dir).filter((f) => f.endsWith('.js') && !f.startsWith('_'))
+      .map((f) => ({ name: f, src: fs.readFileSync(path.join(dir, f), 'utf8') }));
+    const sources = [...scanDir(routesDir), ...scanDir(middlewareDir), { name: 'server.js', src: files.server }];
+    const offenders = [];
+    for (const { name, src } of sources) {
+      if (/keyGenerator\s*:/.test(src) && /ip_\$\{req\.ip\}/.test(src)) offenders.push(name);
+      // 直接 return req.ip / `ip_${req.ip}` 的兜底写法也要拦
+      if (/keyGenerator\s*:/.test(src) && /return\s+[`']?ip_\$\{?req\.ip/.test(src)) offenders.push(name);
+    }
+    expect(offenders).toEqual([]);
+    // 正向断言：三处已知自定义 keyGenerator 都调用了 ipKeyGenerator
+    expect(files.chatRoute).toMatch(/rateLimit\.ipKeyGenerator\(req\.ip\)/g);
+    expect(files.profileRoute).toMatch(/rateLimit\.ipKeyGenerator\(req\.ip\)/);
+  });
+
+  // 2026-11-22：async 回调交给 express-session 的 regenerate 不会被 await；
+  // 内部 await 抛错若不在回调内 try/catch，会成为未处理拒绝（Node 15+ 默认终止进程，
+  // Express 4 不转发 async 拒绝）。守卫 localService 的 4 处 regenerate(async cb) 均带 try。
+  test('session.regenerate async callbacks are wrapped in try/catch (2026-11-22)', () => {
+    const src = files.localService;
+    const re = /req\.session\.regenerate\(async\s*\(err\)\s*=>\s*\{([\s\S]*?)\n\s{4}\}\)/g;
+    let m, count = 0;
+    while ((m = re.exec(src))) {
+      count++;
+      expect(m[1]).toMatch(/try\s*\{/);
+      expect(m[1]).toMatch(/catch\s*\(/);
+    }
+    expect(count).toBeGreaterThanOrEqual(4); // 4 处核心登录/注册/初始化回调
+  });
+
   // 运行时可变配置曾只钳下限不设上限：'1e999'→Infinity 写进缓存后 mbToBytes 返回 0，
   // 全部上传/请求 413（功能瘫痪）；大有限值则令请求体安全闸恒假（被静默禁用）。
   // 现在必须双向钳制 + 拒绝非有限数 + 字节阈值预计算。
