@@ -113,8 +113,10 @@ services:
     #   升级代码的正确做法：本地 git rev-parse HEAD 取新 sha → 替换下方 40/12 位 sha →
     #   确认该 commit 已 push 到 Gitee → 面板重新构建。分支名（如 #jingtu-web）仍可用，
     #   但会随上游提交漂移，不适合生产复现。
+    # 2026-11-22 更新 pin → 3adf085：含安全加固（IPv6 限流/ENCRYPT_KEY/枚举oracle/WS封禁）、
+    #   权限组运行时强制、Docker 时区致命 bug 修复、高危依赖清零，已 push 到 Gitee。
     build:
-      context: "https://gitee.com/htmcwy_0/jingtu-web.git#c75cbb74eee56c8e1619d5fdfe7d9c2b9a44e26f"
+      context: "https://gitee.com/htmcwy_0/jingtu-web.git#3adf085c4b24bfaf74158c86844a0e0bfb6cb125"
       args:
         # 国内镜像源（docker.1ms.run，1Panel 官方维护）：绕开飞牛失效的内置加速器 docker.fnnas.com（401 Unauthorized）
         NODE_IMAGE: docker.1ms.run/library/node:22-slim
