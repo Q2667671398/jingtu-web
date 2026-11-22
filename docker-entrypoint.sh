@@ -16,7 +16,9 @@ set -euo pipefail
 #       无需安装 tzdata、也无需写 /etc/localtime（容器以非 root 运行，本就无权限写）。
 if [ "${TZ:-auto}" = "auto" ] || [ -z "${TZ:-}" ]; then
   # a) 优先读后台按钮持久化的 .env TZ（防止外界覆盖 compose 注入值后仍回到 UTC）
-  ENV_FILE_TZ="$(grep -E '^[[:space:]]*TZ=' /app/.env 2>/dev/null | tail -n 1 | cut -d= -f2-)"
+  # 末尾 || true：.env 无 TZ 行时 grep 返回 1，在 set -euo pipefail 下会让整个赋值语句
+  # 失败退出（容器起不来）。加 || true 让空结果落到空串，走后续出口 IP 判定分支。
+  ENV_FILE_TZ="$(grep -E '^[[:space:]]*TZ=' /app/.env 2>/dev/null | tail -n 1 | cut -d= -f2- || true)"
   ENV_FILE_TZ="$(printf '%s' "${ENV_FILE_TZ}" | tr -d "\"' \t")"
   if [ -n "${ENV_FILE_TZ:-}" ] && [ "${ENV_FILE_TZ}" != "auto" ]; then
     export TZ="${ENV_FILE_TZ}"

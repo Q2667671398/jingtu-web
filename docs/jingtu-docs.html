@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -644,7 +644,7 @@ td code{font-size:11.5px}
       <div class="one"><span class="path">旧模型收藏 · world-tags · avatar-tags</span></div>
     </div></div>
     <div class="entry"><div class="eh"><span class="m" style="background:var(--violet)"></span><b>权限组</b><span>/api/permission-groups</span></div><div class="eb">
-      <div class="one"><span class="path">三表权限模型（30 个 can_* 键）父链继承运行时生效</span></div>
+      <div class="one"><span class="path">三表权限模型（31 个 can_* 键，以 ALL_PERMISSIONS 为准）父链继承运行时生效</span></div>
       <div class="one"><span class="path">系统组层级自愈：成员根组 → 管理员 → 超管</span></div>
     </div></div>
     <div class="entry"><div class="eh"><span class="m" style="background:var(--cyan)"></span><b>运维</b><span>/api/admin/*</span></div><div class="eb">
@@ -675,7 +675,7 @@ td code{font-size:11.5px}
         <tr><td class="f">VRChat 写操作</td><td>10 次 / 分 / 用户（<code>/api/vrc/world</code> · <code>/friend-request</code> · <code>/note</code> · <code>/boop</code>，vrcWriteLimiter）</td></tr>
         <tr><td class="f">VRChat 上游</td><td>全站令牌桶 40 次 / 分（排队最长 12s）；429 → VRC_RATE_LIMITED（retryAfter 30s），收藏前端补全调度联动冷却窗口</td></tr>
       </table>
-      <p style="margin-top:10px;font-size:12.5px;color:var(--dim)">计数 HybridStore：配置 <code>REDIS_HOST</code> 用 Redis 共享态，否则回退进程内 Map（单实例必守）。</p>
+      <p style="margin-top:10px;font-size:12.5px;color:var(--dim)">计数 HybridStore：配置 <code>REDIS_HOST</code> 用 Redis 共享态，否则回退进程内 Map（单实例必守）。<b>2026-11-22 修复</b>：游客 IP 分桶统一走 <code>rateLimit.ipKeyGenerator(req.ip)</code>，否则触发 v8 的 <code>ERR_ERL_KEY_GEN_IPV6</code> 且 IPv4-mapped IPv6 共享桶可绕过限流（私信/群消息/个人相册上传三处）。</p>
     </div>
     <div class="card">
       <h3><span class="ic" style="background:var(--rose)"></span>已知实现差异（对接时注意）</h3>
@@ -686,6 +686,7 @@ td code{font-size:11.5px}
         <li><code>posts</code> 的 <code>limit</code> 参数已作为 <code>pageSize</code> 别名消费，<code>q</code> 关键词已支持（2026-10-26 收口）</li>
         <li>上传字段命名以代码为准：photo/media/photos/video/avatar/file/thumbnail/image</li>
         <li>直播 <code>/live/user/history</code> 被流式参数路由遮蔽不可达（历史遗留）</li>
+        <li>活动队伍成员对象字段为 <code>user_id</code>（非 <code>id</code>），前端判定入队/队长须用 <code>user_id</code> 并统一 <code>String()</code> 比较（2026-11-22 修复）</li>
       </ul>
     </div>
   </div>
@@ -772,19 +773,19 @@ td code{font-size:11.5px}
     <tr><td class="f">相册</td><td><span class="tag ok">✅</span></td><td class="muted">主相册 500MB / 个人相册 200MB / 回收站（30 天清理）</td></tr>
     <tr><td class="f">公告</td><td><span class="tag ok">✅</span></td><td class="muted">富文本/附件/历史/恢复</td></tr>
     <tr><td class="f">聊天</td><td><span class="tag ok">✅</span></td><td class="muted">私聊/群聊/媒体 100MB/已读位置/搜索/批量已读</td></tr>
-    <tr><td class="f">直播</td><td><span class="tag warn">✅ 元数据</span></td><td class="muted">仅 RTMP/HLS 链接入库，无推流转码后端；私密直播限主播+管理员</td></tr>
+    <tr><td class="f">直播</td><td><span class="tag warn">⛔ 已下线</span></td><td class="muted">P1-5：/api/live 不挂载、前端 DISABLED_FEATURES 关闭、CSS 全隐藏；缺 RTMP/HLS 转码管线，代码存 routes/_archive/live.js</td></tr>
     <tr><td class="f">通知</td><td><span class="tag ok">✅</span></td><td class="muted">站内通知；VRChat 官方通知可并入同步（vrc_notif_sync，仅会员，10 分钟）</td></tr>
     <tr><td class="f">收藏</td><td><span class="tag ok">✅</span></td><td class="muted">统一收藏馆（<b>模型/世界双分类</b>，分组可重命名/新建/删除且带确认）+ 旧版收藏 + VRC 官方收藏（<b>移除好友类型</b>；三级缓存 / 负缓存冷却 / 限流感知补全；同步只重拉指定分类）</td></tr>
     <tr><td class="f">点赞</td><td><span class="tag ok">✅</span></td><td class="muted">user_like 防重复（唯一键）</td></tr>
     <tr><td class="f">签到/成就</td><td><span class="tag ok">✅</span></td><td class="muted">每日签到（7 档奖励）、29 个默认成就</td></tr>
-    <tr><td class="f">权限组</td><td><span class="tag ok">✅</span></td><td class="muted">三表模型 + <b>系统组层级自愈</b>（成员根组 → 管理员 → 超管），30 个 <code>can_*</code> 键<b>父链继承并在运行时生效</b>；创建组可指定继承源（父组）</td></tr>
+    <tr><td class="f">权限组</td><td><span class="tag ok">✅</span></td><td class="muted">三表模型 + <b>系统组层级自愈</b>（成员根组 → 管理员 → 超管），31 个 <code>can_*</code> 键<b>父链继承并在运行时生效</b>；创建组可指定继承源（父组）</td></tr>
     <tr><td class="f">VRChat 群组</td><td><span class="tag ok">✅</span></td><td class="muted">group/vrc 管理、Pipeline 实时同步、审核队列（远程 block/mute 回显）；<b>信任光环</b>：按 VRChat 信任等级给头像外圈着色（名册优先，`users.trust_level` 兜底），开关按人独立可见（V6.16/V6.17）</td></tr>
     <tr><td class="f">好友/关注</td><td><span class="tag ok">✅</span></td><td class="muted">好友增删/状态/列表、关注流</td></tr>
     <tr><td class="f">管理后台</td><td><span class="tag ok">✅</span></td><td class="muted">超管：用户管理/配置/内容管理/操作日志</td></tr>
     <tr><td class="f">运维后台（网页版）</td><td><span class="tag ok">✅ 独立面板</span></td><td class="muted">端口 3457，仅本机（07-运维后台使用说明）</td></tr>
-    <tr><td class="f">DB/备份/文件/安全/分析/导出/Webhook/分享</td><td><span class="tag ok">备份/文件/安全/分析/Webhook/分享 有 UI</span></td><td class="muted">管理员接口族（DB/导出待接线）</td></tr>
+    <tr><td class="f">DB/备份/文件/安全/分析/导出/Webhook/分享</td><td><span class="tag ok">备份/文件/安全/分析/导出/Webhook/分享 均有 UI</span></td><td class="muted">管理员接口族；数据导出/导入已实现（个人 F-4 + 管理端单用户/批量）；数据库管理面板有意停放（_unwired/admin-db.js，后端接口可用）</td></tr>
     <tr><td class="f">地图</td><td><span class="tag ok">✅</span></td><td class="muted">Leaflet CDN 瓦片地图</td></tr>
-    <tr><td class="f">国际化 i18n</td><td><span class="tag ok">✅</span></td><td class="muted">6 语言（zh/en/de/fr/ja/ru）语言包键集完全一致（zh 共 <b>3732 键</b>，多轮补齐），静态 HTML 硬编码清零；<code>__(key)</code> 运行时 + <code>data-i18n</code> 静态接线（版本戳 20261026c）</td></tr>
+    <tr><td class="f">国际化 i18n</td><td><span class="tag ok">✅</span></td><td class="muted">6 语言（zh/en/de/fr/ja/ru）语言包键集完全一致（zh 共 <b>3732 键</b>，多轮补齐），静态 HTML 硬编码清零；<code>__(key)</code> 运行时 + <code>data-i18n</code> 静态接线（版本戳 20261122c）</td></tr>
   </table>
 
   <div class="grid g2" style="margin-top:16px">
@@ -794,8 +795,10 @@ td code{font-size:11.5px}
         <li>bcrypt cost <b>12</b>；密码强度 ≥8 位 + 大小写 + 数字</li>
         <li>角色阈值：member(2) / admin(3) / super_admin(4)；<code>requireAdminCompat</code> = admin 及以上</li>
         <li><b>角色实时判定</b>：<code>users.role</code> 仅三值、非法值归一 member；<code>currentRole</code> / <code>requireRole</code> 每次回查 DB、不信任会话快照（20261021g 修复 L1/L3）</li>
-        <li>VRChat 凭据：QQ 用 AES-256-CBC、Cookie 用 <b>AES-256-GCM</b>（ENCRYPT_KEY 64hex）</li>
+        <li>VRChat 凭据：QQ 用 AES-256-CBC、Cookie 用 <b>AES-256-GCM</b>（ENCRYPT_KEY 64hex）；<code>/init</code> 首装生成密钥统一 64hex（2026-11-22 修复 96hex 导致重启被拒/解密失败）</li>
         <li>绑定三步限流 + 2FA 失败计数防爆破</li>
+        <li>找回密码<b>防账号枚举</b>：未知邮箱写影子 state 使响应同构；<code>reset-password</code> 校验 code 类型（2026-11-22 修复）</li>
+        <li>会话重建 4 处 <code>regenerate(async cb)</code> 加 try/catch，避免未处理拒绝终止进程（2026-11-22 修复）</li>
       </ul>
       <p style="margin-top:10px;font-size:12.5px;color:var(--green)">✅ 历史 P1/P2/P3 已于 2026-10-09 修复；全站质检（功能/交互/性能/安全/一致性）的修复与加固记录已并入 <code>docs/06-功能模块与安全.md</code></p>
     </div>
@@ -810,6 +813,7 @@ td code{font-size:11.5px}
         <tr><td class="f">安全头</td><td>nosniff / X-Frame-Options DENY / Referrer-Policy / CSP（script/style 仍 unsafe-inline）/ 生产 HSTS</td></tr>
         <tr><td class="f">上传</td><td>全路由扩展名+魔数双闸 + secureUpload 白名单 + 分档大小限制</td></tr>
         <tr><td class="f">静态/更新</td><td>/uploads 登录或 ?share= 令牌；/backups 仅管理员；在线更新仅超管 + execFile 数组直传</td></tr>
+        <tr><td class="f">WebSocket</td><td>/ws 握手查 session 签名 + 回查 <code>users.banned/deleted_at</code>（fail-closed），online 心跳复查封禁并 close(1008)（2026-11-22 修复封禁用户维持旧连接绕过）</td></tr>
       </table>
     </div>
   </div>
@@ -1012,7 +1016,7 @@ app.use('/api', 404 + error handler)</pre>
     <h3 class="sub">2.1 index.html 静态脚本栈（顺序即硬依赖）</h3>
     <div class="panel">
       <div class="panel-head">
-        <h4>17 个入口脚本 <span class="pill">版本戳链 v=20261026c</span></h4>
+        <h4>17 个入口脚本 <span class="pill">版本戳链 v=20261122c</span></h4>
       </div>
       <div class="tbl-scroll" style="max-height:560px"><table class="tbl">
         <thead><tr><th>#</th><th>脚本</th><th>模式</th><th>版本戳</th><th>作用</th></tr></thead>
@@ -1122,7 +1126,7 @@ app.use('/api', 404 + error handler)</pre>
         <tbody id="symBody"></tbody>
       </table></div>
     </div>
-    <div class="callout"><b>版本戳链：</b>i18n <code>I18N_PACK_VERSION</code>（20261026c）↔ index.html 语言包 document.write <b>必须双写同步</b>；seo 在 head 同步加载（不 defer）；主脚本各自 <code>?v=</code>；懒加载模块继承 <code>loader.js?v=20261026c</code>。</div>
+    <div class="callout"><b>版本戳链：</b>i18n <code>I18N_PACK_VERSION</code>（20261122c）↔ index.html 语言包 document.write <b>必须双写同步</b>；seo 在 head 同步加载（不 defer）；主脚本各自 <code>?v=</code>；懒加载模块继承 <code>loader.js?v=20261122c</code>。</div>
   </section>
 <section id="checklist">
     <div class="section-head">
@@ -1298,23 +1302,23 @@ const TOOLS=[
 ];
 const DBHOT=[['1','users','28'],['2','event','13'],['3','album_photo','11'],['4','group_roster','9'],['5','posts','9'],['6','notifications','9'],['7','permission_groups','3'],['8','user_like','3'],['9','user_friends','7'],['10','event_sign','6'],['11','user_group_membership','6'],['12','sys_oper_log','5'],['13','announcement','5'],['14','post_comment','3'],['15','group_permission_entries','3']];
 const STACK=[
- ['1','/js/languages/&lt;lang&gt;.js','head 内 document.write（同步）','20261026c','语言包×6（detectLang 动态注入）'],
- ['2','/js/seo.js','head 内同步（非 defer）','20261026c','SITE_SEO（og/twitter/JSON-LD），微型翻译不依赖 i18n'],
- ['3','/js/core.js','defer','20261026c','api/apiForm/errText/toast/esc + __isLoggedIn 等 getter 别名'],
- ['4','/js/i18n.js','defer','20261026c','__ 翻译 + 语言切换器；I18N_PACK_VERSION=\'20261026c\''],
- ['5','/js/ui.js','defer','20261026c','头像代理链/__avatarFail/__notifPrefs/__heroConfig/switchTab 原始实现/通知中心'],
- ['6','gsap.min.js','defer','20261026c','动效库'],
- ['7','ScrollTrigger.min.js','defer','20261026c','滚动触发'],
- ['8','/js/motion.js','defer','20261026c','GSAP 动效 + 包裹 switchTab（__switchWrapped）'],
- ['9','/js/reveal.js','defer','20261026c','滚动揭示（IntersectionObserver；motion 启用后让位）'],
- ['10','/js/nav-scroller.js','defer','20261026c','顶部标签滑动'],
- ['11','/js/freeze.js','defer','20261026c','__freeze 空闲冻结'],
- ['12','/js/theme.js','defer','20261026c','主题 V5.5（模式/明暗/强调色/时间自动）+ 动态效果强制开关（force-anim）'],
- ['13','/js/auth.js','defer','20261026c','登录/注册/2FA/VRC 登录/自动登录/登录页头像缓存单槽预览'],
- ['14','/js/loader.js','defer','20261026c','懒加载调度 + switchTab 最终包裹 + TAB_SEO_MAP + force-anim'],
- ['15','/js/smartsearch.js','defer','20261026c','Ctrl+K 命令面板'],
- ['16','/js/init.js','defer','20261026c','初始化向导（main 未初始化分支调用）'],
- ['17','/js/main.js','defer','20261026c','入口调度/WS/轮询/通知']
+ ['1','/js/languages/&lt;lang&gt;.js','head 内 document.write（同步）','20261122c','语言包×6（detectLang 动态注入）'],
+ ['2','/js/seo.js','head 内同步（非 defer）','20261122c','SITE_SEO（og/twitter/JSON-LD），微型翻译不依赖 i18n'],
+ ['3','/js/core.js','defer','20261122c','api/apiForm/errText/toast/esc + __isLoggedIn 等 getter 别名'],
+ ['4','/js/i18n.js','defer','20261122c','__ 翻译 + 语言切换器；I18N_PACK_VERSION=\'20261122c\''],
+ ['5','/js/ui.js','defer','20261122c','头像代理链/__avatarFail/__notifPrefs/__heroConfig/switchTab 原始实现/通知中心'],
+ ['6','gsap.min.js','defer','20261122c','动效库'],
+ ['7','ScrollTrigger.min.js','defer','20261122c','滚动触发'],
+ ['8','/js/motion.js','defer','20261122c','GSAP 动效 + 包裹 switchTab（__switchWrapped）'],
+ ['9','/js/reveal.js','defer','20261122c','滚动揭示（IntersectionObserver；motion 启用后让位）'],
+ ['10','/js/nav-scroller.js','defer','20261122c','顶部标签滑动'],
+ ['11','/js/freeze.js','defer','20261122c','__freeze 空闲冻结'],
+ ['12','/js/theme.js','defer','20261122c','主题 V5.5（模式/明暗/强调色/时间自动）+ 动态效果强制开关（force-anim）'],
+ ['13','/js/auth.js','defer','20261122c','登录/注册/2FA/VRC 登录/自动登录/登录页头像缓存单槽预览'],
+ ['14','/js/loader.js','defer','20261122c','懒加载调度 + switchTab 最终包裹 + TAB_SEO_MAP + force-anim'],
+ ['15','/js/smartsearch.js','defer','20261122c','Ctrl+K 命令面板'],
+ ['16','/js/init.js','defer','20261122c','初始化向导（main 未初始化分支调用）'],
+ ['17','/js/main.js','defer','20261122c','入口调度/WS/轮询/通知']
 ];
 const FMM=[
  ['core.js','静','—','传输层/工具/弹窗/图片兜底/全局错误日志/VRC 重登引导','`__` toast esc','/api/csrf-token'],

@@ -1,6 +1,6 @@
 # 境途同游 Web — 部署指南（Docker / 宝塔 / 裸机）
 
-> 适用版本：server `1.3.0` / 启动日志 `V7.10`
+> 适用版本：server `1.3.0` / 启动日志 `V8.2`
 > 本文覆盖三种部署方式，并列出生产必检项。更底层的架构与运维细节见 `docs/03-部署与运维.md`（完整文档索引见 `docs/README.md`）。
 
 ---
@@ -82,11 +82,12 @@ curl -fsS http://127.0.0.1:3456/api/health/ready
 ### 1.3 镜像说明（`Dockerfile`）
 
 - 多阶段构建（`node:22-slim`，Node 20 已于 2026-04 EOL），仅运行阶段保留依赖，体积更小。
-- 应用以 **非 root**（node 用户）运行；`uploads/backups/logs/assets/server/data` 为命名卷
-  （`server/data` 存放激活码文件与 SQLite 模式库，容器重建/删除后数据不丢），可持久化与备份。
+- 应用以 **非 root**（node 用户）运行；`uploads/backups/logs/assets/server/data` 通过 **bind mount** 持久化
+  （默认挂到宿主 `${STORAGE_ROOT:-./docker-data}/`，`server/data` 存放激活码文件与 SQLite 模式库，容器重建/删除后数据不丢），可持久化与备份。
   日志默认轮转（单文件 ≤50m，保留 5 份）避免无限增长。
 - 启动顺序由 `docker-entrypoint.sh` 保证：等待 MySQL 端口 → 执行 `db_init.js` → 启动 `node server.js`。
-- 生产环境 Swagger 不加载，镜像已用 `npm ci --omit=dev` 精简依赖（devDependencies 不进入运行镜像）。
+- 生产环境 Swagger 不加载，镜像构建用 `npm install --omit=dev` 精简依赖（devDependencies 不进入运行镜像）。
+  这里用 `npm install` 而非 `npm ci` 是刻意选择：Docker git 构建上下文偶发 lockfile 未命中时 `npm ci` 会 EUSAGE 退出 254（飞牛构建实测），`npm install` 同样按 lockfile 锁版本安装且更稳健。
 
 ### 1.4 公网 TLS
 
@@ -100,7 +101,7 @@ Docker 内应用只暴露 3456。生产请在宿主机用 宝塔 / Nginx 反代�
 docker compose logs -f app          # 查看日志
 docker compose exec app node db_init.js   # 手动迁移
 docker compose down                 # 停止（数据在卷中保留）
-docker compose pull && docker compose up -d --build   # 升级
+docker compose pull db && docker compose up -d --build   # 升级（app 是本地 build，只 pull 镜像化的 db）
 ```
 
 ### 1.6 飞牛 fnOS 单文件部署
@@ -198,7 +199,7 @@ Cookie `secure` 改为 `'auto'`，经 HTTPS 时自动加 `Secure`。**反代上�
 | `KOOK_URL` / `OOPZ_URL` | 社区外链 | 可选 |
 | `RTMP_HOST` / `RTMP_PORT` / `RTMP_APP` / `HLS_BASE_URL` | 直播推流 | 可选 |
 
-> Swagger 包在 `devDependencies`，但生产已不再加载，因此 `npm ci --omit=dev` 现在可用。
+> Swagger 包在 `devDependencies`，但生产已不再加载，因此镜像构建可用 `npm install --omit=dev` 精简依赖（Dockerfile 实际采用）。
 
 ---
 
