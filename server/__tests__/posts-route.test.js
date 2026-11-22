@@ -41,6 +41,8 @@ jest.mock('fs', () => {
 jest.mock('../auth', () => ({
   requireAuth(req, res, next) { next(); },
   requireAdminCompat(req, res, next) { next(); },
+  // 细粒度权限中间件：单测默认放行（权限行为由 auth-services.test.js 专门覆盖）
+  requirePerm() { return (req, res, next) => next(); },
   currentRole: jest.fn(async (req) => (req.session && req.session.role) || null),
   hasRole: jest.fn(async (req, ...roles) => {
     const role = req.session && req.session.role;

@@ -22,7 +22,7 @@
  */
 const express = require('express');
 const { fail, ok, getPool, logOper, validateFields, handleError, sendError, sendVrcError, ErrorCodes, paginate, escapeLike, toSqlDatetime } = require('../utils');
-const { requireAuth, requireAdminCompat, requireSuperAdmin, getAvatarUrl, ROLE_LEVEL, currentRole } = require('../auth');
+const { requireAuth, requireAdminCompat, requireSuperAdmin, requirePerm, getAvatarUrl, ROLE_LEVEL, currentRole } = require('../auth');
 const { vrchatGetGroupEvents } = require('../vrc');
 const cacheService = require('../cache_service');
 const webhook = require('../webhook');
@@ -332,7 +332,8 @@ router.get('/', async (req, res) => {
   });
 
   // ==================== 创建活动 ====================
-  router.post('/', requireAuth, async (req, res) => {
+  // 细粒度权限：管理员可在后台显式禁用「创建活动」（未配置/允许时放行，超管不受限）
+  router.post('/', requireAuth, requirePerm('can_create_event'), async (req, res) => {
     try {
       let { title, place, eventTime, time, description, desc, maxSign, eventType, endsAt, visibility, worldId, worldName, worldImageUrl, instanceId, instanceType } = req.body;
         if (!eventTime && time) eventTime = time;

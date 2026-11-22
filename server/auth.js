@@ -173,9 +173,72 @@ async function requireSuperAdmin(req, res, next) {
   next();
 }
 
+/**
+ * 细粒度权限强制（2026-11-22）。
+ * 语义 =「显式拒绝优先」：仅当用户所属组（含父链）中该键存在明确 0、且无任何组明确 1 时拒绝。
+ * - 未配置（无条目）/ 用户无组 / DB 异常 → 放行（向后兼容：现网 seed 只给部分键写过 1，
+ *   若用「默认拒绝」会锁死报名/发帖等核心功能）。
+ * - 超管（super_admin）不受限，避免管理员误把自己锁死。
+ * - 与 resolveInheritedPermissions 的 MAX 聚合语义一致（任意组允许 = 允许）。
+ */
+async function isPermExplicitlyDenied(userId, key) {
+  const pool = getPool();
+  if (!pool || !userId || !key) return false;
+  // 1) 用户所属组 + 沿 parent_id 展开父链（MySQL 5.7 无 CTE，JS 迭代，带环保护）
+  const [memberships] = await pool.query(`SELECT group_id FROM user_group_membership WHERE user_id = ?`, [userId]);
+  if (!memberships.length) return false;
+  const [allGroups] = await pool.query(`SELECT id, parent_id AS parentId FROM permission_groups`);
+  const parentOf = new Map(allGroups.map(g => [Number(g.id), g.parentId ? Number(g.parentId) : null]));
+  const chain = new Set();
+  for (const m of memberships) {
+    let cur = Number(m.group_id);
+    const seen = new Set();
+    while (cur && !seen.has(cur)) {
+      seen.add(cur); chain.add(cur);
+      cur = parentOf.get(cur) || null;
+    }
+  }
+  if (!chain.size) return false;
+  // 2) 该键在链上所有组的取值；MAX=1 表示任意组允许
+  const ids = Array.from(chain);
+  const [rows] = await pool.query(
+    `SELECT MAX(permission_value) AS allowed, COUNT(*) AS cfg
+     FROM group_permission_entries
+     WHERE permission_key = ? AND group_id IN (${ids.map(() => '?').join(',')})`,
+    [key, ...ids]
+  );
+  const r = rows[0] || {};
+  // 无配置条目 → 放行；有配置且聚合为 0 → 显式拒绝
+  return Number(r.cfg) > 0 && Number(r.allowed || 0) === 0;
+}
+
+function requirePerm(key) {
+  return async (req, res, next) => {
+    if (!req.session || req.session.userId === undefined) {
+      return fail(res, 401, '请先登录');
+    }
+    // 超管永不被细粒度键限制
+    const freshRole = await refreshRoleFromDb(req.session);
+    const role = freshRole || req.session.role;
+    if (role === 'super_admin') return next();
+    try {
+      if (await isPermExplicitlyDenied(req.session.userId, key)) {
+        return fail(res, 403, '权限不足');
+      }
+    } catch (e) {
+      // fail-open：权限查询依赖 DB，异常时放行而非锁死功能（与鉴权主链路的 fail-closed 不同，
+      // 这里拒绝会误伤全部用户；显式拒绝是「附加约束」，不应因 DB 抖动变成全站不可用）
+      logger.warn && logger.warn('auth', '[requirePerm] 权限查询失败，放行:', key, e.message);
+    }
+    next();
+  };
+}
+
 module.exports = {
   ROLE_LEVEL,
   ROLE_LABELS,
+  requirePerm,
+  isPermExplicitlyDenied,
   encryptAES,
   decryptAES,
   hashPassword,

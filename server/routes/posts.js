@@ -11,7 +11,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { requireAuth, hasRole, currentRole } = require('../auth');
+const { requireAuth, hasRole, currentRole, requirePerm } = require('../auth');
 const { fail, ok,  getPool, getAvatarUrl, handleError , sendError, ErrorCodes, createFileFilter, secureUpload, logOper, paginate, escapeLike  } = require('../utils');
 const cacheService = require('../cache_service');
 const webhook = require('../webhook');
@@ -378,7 +378,7 @@ router.get('/:id', async (req, res) => {
  * Content-Type: multipart/form-data
  * 字段：content(文字), visibility(可见性), media(文件数组)
  */
-router.post('/', requireAuth, (req, res, next) => {
+router.post('/', requireAuth, requirePerm('can_create_post'), (req, res, next) => {
   secureUpload(postUpload.array('media', 12))(req, res, (err) => {
     if (err) {
       if (err.code === 'LIMIT_FILE_SIZE') return sendError(res, 400, ErrorCodes.BAD_REQUEST, '文件大小超过限制（图片10MB/视频200MB）');

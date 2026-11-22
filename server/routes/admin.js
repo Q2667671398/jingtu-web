@@ -12,7 +12,7 @@
  */
 const express = require('express');
 const { ok, getPool, handleError, logOper, sendError, ErrorCodes, paginate, escapeLike, encryptCookie, decryptCookie } = require('../utils');
-const { requireAdminCompat, requireRole } = require('../auth');
+const { requireAdminCompat, requireRole, requirePerm } = require('../auth');
 const logger = require('../logger');
 const settings = require('../settings');
 const mediaProviders = require('../media_providers');
@@ -75,7 +75,8 @@ module.exports = function (groupId, vrcCookieCfg) {
   // 字段结构完全不同。管理面板的"操作日志"面板此前误调那个端点，
   // 拿到的每条记录都没有 adminVrcId/operType/content，于是全部渲染成空白与
   // "unknown"。sys_oper_log 表被 20 处代码写入，却从来没有任何接口读取过。
-  router.get('/admin/oper-logs', requireAdminCompat, async (req, res) => {
+  // 细粒度权限：显式禁用 can_view_logs 的管理员无法查看操作日志（未配置/允许/超管放行）
+  router.get('/admin/oper-logs', requireAdminCompat, requirePerm('can_view_logs'), async (req, res) => {
     try {
       const { page, pageSize, offset } = paginate(req, { defaultSize: 20, maxSize: 100 });
       const type = (req.query.type || '').trim();
