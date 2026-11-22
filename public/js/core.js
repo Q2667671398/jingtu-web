@@ -937,8 +937,8 @@ function promptVrcReLogin(detail) {
     <div class="confirm-dialog">
       <div class="confirm-msg"><b style="color:#f87171">${esc(__('vrc.relogin_title'))}</b><br><br>${esc(msg)}</div>
       <div class="confirm-actions" style="margin-top:12px">
-        <button class="btn btn-accent btn-sm" data-action="confirm">${esc(__('vrc.relogin_btn'))}</button>
         <button class="btn btn-outline btn-sm" data-action="cancel">${esc(__('core.cancel_btn'))}</button>
+        <button class="btn btn-accent btn-sm" data-action="confirm">${esc(__('vrc.relogin_btn'))}</button>
       </div>
     </div>`, function () {
       // 跳转个人中心并滚动到 VRChat 绑定 / 状态区
@@ -969,8 +969,8 @@ function showConfirm(msg, callbackYes, callbackNo) {
       <div class="confirm-dialog">
         <div class="confirm-msg">${esc(msg)}</div>
         <div class="confirm-actions">
-          <button class="btn btn-accent btn-sm" data-action="confirm">${__('core.confirm_btn')}</button>
           <button class="btn btn-outline btn-sm" data-action="cancel">${__('core.cancel_btn')}</button>
+          <button class="btn btn-accent btn-sm" data-action="confirm">${__('core.confirm_btn')}</button>
         </div>
       </div>`, callbackYes, callbackNo);
     return;
@@ -1022,8 +1022,8 @@ function showInput(question, defaultValue, callback) {
       <div class="confirm-msg">${esc(question)}</div>
       <input type="text" class="input" id="inputPromptField" value="${esc(defaultValue || '')}" style="width:100%;margin-top:8px;box-sizing:border-box">
       <div class="confirm-actions" style="margin-top:12px">
-        <button class="btn btn-accent btn-sm" data-action="confirm">${__('core.confirm_btn')}</button>
         <button class="btn btn-outline btn-sm" data-action="cancel">${__('core.cancel_btn')}</button>
+        <button class="btn btn-accent btn-sm" data-action="confirm">${__('core.confirm_btn')}</button>
       </div>
     </div>`, null, null);
   const input = overlay.querySelector('#inputPromptField');

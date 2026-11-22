@@ -3705,6 +3705,8 @@ window._LANG_ZH = {
   "theme.mode_switch": "切换模式",
   "theme.mode_manual": "手动",
   "theme.follow_system": "跟随系统",
+  "theme.mode_by_time": "按时间（18点-6点暗色）",
+  "theme.anim_follow_system": "跟随系统动效偏好",
   "theme.brightness_label": "亮度方案",
   "theme.dark": "暗色",
   "theme.light": "亮色",

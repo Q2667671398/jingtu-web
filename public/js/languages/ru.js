@@ -3701,6 +3701,8 @@ window._LANG_RU = {
   "theme.mode_switch": "Режим",
   "theme.mode_manual": "Вручную",
   "theme.follow_system": "Как в системе",
+  "theme.mode_by_time": "По времени (темно 18:00-06:00)",
+  "theme.anim_follow_system": "Как в системе (анимация)",
   "theme.brightness_label": "Яркость",
   "theme.dark": "Тёмный",
   "theme.light": "Светлый",

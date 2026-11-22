@@ -3701,6 +3701,8 @@ window._LANG_FR = {
   "theme.mode_switch": "Mode",
   "theme.mode_manual": "Manuel",
   "theme.follow_system": "Suivre le système",
+  "theme.mode_by_time": "Selon l'heure (sombre 18h-6h)",
+  "theme.anim_follow_system": "Suivre les animations système",
   "theme.brightness_label": "Luminosité",
   "theme.dark": "Sombre",
   "theme.light": "Clair",

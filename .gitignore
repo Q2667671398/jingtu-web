@@ -115,7 +115,7 @@ public/css/_analysis*.txt
 public/css/_lines.py
 public/css/_report.txt
 audit_*_scan.js
-# 误重定向产生的 0 字节文件（文件名含大括号，用转义匹配）
-server/{try*
+# 误重定向产生的 0 字节文件（文件名含大括号，用字符类避免被当作 glob 分组语法）
+server/[{]try*
 # 根目录散落的发布包（非源码，备份请走 releases 流程）
 /*.zip

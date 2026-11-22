@@ -3701,6 +3701,8 @@ window._LANG_DE = {
   "theme.mode_switch": "Modus",
   "theme.mode_manual": "Manuell",
   "theme.follow_system": "System folgen",
+  "theme.mode_by_time": "Nach Uhrzeit (dunkel 18-6 Uhr)",
+  "theme.anim_follow_system": "Systemanimation folgen",
   "theme.brightness_label": "Helligkeit",
   "theme.dark": "Dunkel",
   "theme.light": "Hell",

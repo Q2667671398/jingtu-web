@@ -754,6 +754,13 @@ async function clearAllNotifications() {
 
 // ==================== 通知偏好设置 ====================
 // email 由后端（notification-service）消费；browser/sound 写入 window.__notifPrefs 供 main.js 客户端生效
+const NOTIF_TOGGLE_MAP = { notifEmailToggle: 'email', notifBrowserToggle: 'browser', notifSoundToggle: 'sound', notifVrcToggle: 'vrc' };
+function syncNotificationToggles() {
+  Object.keys(NOTIF_TOGGLE_MAP).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!(window.__notifPrefs && window.__notifPrefs[NOTIF_TOGGLE_MAP[id]]);
+  });
+}
 let notifSettingsLoaded = false;
 async function loadNotificationSettings() {
   if (notifSettingsLoaded || !currentUser) return;
@@ -763,16 +770,13 @@ async function loadNotificationSettings() {
     const data = await res.json();
     notifSettingsLoaded = true;
     window.__notifPrefs = { email: !!data.email, browser: data.browser !== false, sound: data.sound !== false, vrc: data.vrc !== false };
-    const map = { notifEmailToggle: 'email', notifBrowserToggle: 'browser', notifSoundToggle: 'sound', notifVrcToggle: 'vrc' };
-    Object.keys(map).forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.checked = window.__notifPrefs[map[id]];
-    });
+    syncNotificationToggles();
   } catch { /* 静默：保持默认开关 */ }
 }
 
 async function toggleNotificationSetting(key, value) {
-  const prefs = Object.assign({ email: false, browser: true, sound: true, vrc: true }, window.__notifPrefs || {});
+  const oldPrefs = Object.assign({ email: false, browser: true, sound: true, vrc: true }, window.__notifPrefs || {});
+  const prefs = Object.assign({}, oldPrefs);
   prefs[key] = !!value;
   window.__notifPrefs = prefs;
   try {
@@ -782,6 +786,9 @@ async function toggleNotificationSetting(key, value) {
     });
     if (!res.ok) throw new Error('save failed');
   } catch {
+    // 保存失败必须回滚：否则复选框显示「已开启」但服务端未保存，用户以为生效实则无效。
+    window.__notifPrefs = oldPrefs;
+    syncNotificationToggles();
     toast(__('ui.op_failed'), 'error');
   }
 }

@@ -27,7 +27,13 @@ async function loadMe() {
 async function login(loginId, password, remember = false) {
   const loginPwdBtn = document.getElementById('loginPwdBtn');
   const loginLoading = document.getElementById('loginLoading');
-  if (loginPwdBtn) { loginPwdBtn.disabled = true; loginPwdBtn.textContent = __('auth.logging_in'); }
+  // 只改 .login-btn-text 子节点：直接写 button.textContent 会销毁 .login-btn-shimmer 流光层，
+  // 且 data-i18n 文案节点丢失后切语言不再更新（VRC 登录同款写法见本文件 661 行）。
+  if (loginPwdBtn) {
+    loginPwdBtn.disabled = true;
+    const t = loginPwdBtn.querySelector('.login-btn-text') || loginPwdBtn;
+    t.textContent = __('auth.logging_in');
+  }
   try {
     const res = await api('/api/auth/login', { 
       method: 'POST', 
@@ -66,7 +72,11 @@ async function login(loginId, password, remember = false) {
     }
     return false;
   } finally {
-    if (loginPwdBtn) { loginPwdBtn.disabled = false; loginPwdBtn.textContent = __('auth.login_btn'); }
+    if (loginPwdBtn) {
+      loginPwdBtn.disabled = false;
+      const t = loginPwdBtn.querySelector('.login-btn-text') || loginPwdBtn;
+      t.textContent = __('auth.login_btn');
+    }
   }
 }
 

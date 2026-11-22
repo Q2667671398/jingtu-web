@@ -224,6 +224,11 @@ document.addEventListener('click', function (e) {
   if (!btn) return;
   setAnimMode(btn.dataset.anim);
 });
+// 浮层关闭契约统一：主题面板响应 Esc（与 modal / 用户菜单一致），
+// 不拦截其它 Esc 监听（各自关闭各自浮层，互不冲突）。
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' || e.key === 'Esc') closeThemePanel();
+});
 
 // ==================== 用户单独的网站背景 ====================
 // 与主题（亮度/强调色）相互独立：背景图来自用户资料 preferences.backgroundImage，

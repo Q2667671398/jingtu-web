@@ -3703,6 +3703,8 @@ window._LANG_EN = {
   "theme.mode_switch": "Mode",
   "theme.mode_manual": "Manual",
   "theme.follow_system": "Follow system",
+  "theme.mode_by_time": "By time (dark 18:00-06:00)",
+  "theme.anim_follow_system": "Follow system motion",
   "theme.brightness_label": "Brightness",
   "theme.dark": "Dark",
   "theme.light": "Light",

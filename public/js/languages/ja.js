@@ -3701,6 +3701,8 @@ window._LANG_JA = {
   "theme.mode_switch": "モード切替",
   "theme.mode_manual": "手動",
   "theme.follow_system": "システムに従う",
+  "theme.mode_by_time": "時間帯（18時-6時は暗色）",
+  "theme.anim_follow_system": "システムの動き設定に従う",
   "theme.brightness_label": "明るさ",
   "theme.dark": "ダーク",
   "theme.light": "ライト",

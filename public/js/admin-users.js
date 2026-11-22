@@ -637,9 +637,10 @@ async function doRestoreBackup(encodedFilename) {
 let adminMgrCurrentPage = 1;
 let adminMgrSearchTimer = null;
 
-// 通用分页渲染：生成带 data-action / data-value 的按钮，配合 initAdminUsersEventDelegates 事件委托。
-// 此前 renderAdminMgrList 调用了一个并不存在的 renderPagination，导致多页时分页必抛 ReferenceError。
-function renderPagination(current, total, action) {
+// 分页渲染：生成带 data-action / data-value 的按钮，配合 initAdminUsersEventDelegates 事件委托。
+// 命名为模块专属的 renderAdminMgrPagination，避免与 _unwired/admin-db.js 及本文件另一处 renderAdminPagination 冲突
+// （本项目 JS 均为全局脚本，一旦 admin-db 接线，同名函数会静默覆盖）。
+function renderAdminMgrPagination(current, total, action) {
   if (!total || total <= 1) return '';
   let html = '';
   if (current > 1) {
@@ -736,7 +737,7 @@ function renderAdminMgrList(users, totalPages) {
   }).join('');
   
   const pagination = document.getElementById('adminMgrPagination');
-  if (pagination) pagination.innerHTML = renderPagination(adminMgrCurrentPage, totalPages, 'load-admin-mgr');
+  if (pagination) pagination.innerHTML = renderAdminMgrPagination(adminMgrCurrentPage, totalPages, 'load-admin-mgr');
 }
 
 function showAddAdminModal() {
