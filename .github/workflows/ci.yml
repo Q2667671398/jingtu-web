@@ -76,6 +76,29 @@ jobs:
       - name: 运行 ESLint
         run: npm run lint
 
+  # 2026-11-23：前端 JS 语法门禁。ESLint job 在 server/ 下运行，不带入 public/js，
+  # 50+ 个原生前端模块此前无任何 CI 语法检查。这里补一道 node --check 遍历门禁。
+  frontend-syntax:
+    name: 前端 JS 语法检查（node --check 全模块）
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 遍历检查 public/js 语法
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            if ! node --check "$f" >/dev/null 2>&1; then
+              echo "SYNTAX ERROR: $f"
+              node --check "$f" || true
+              fail=1
+            fi
+          done < <(find public/js -name '*.js' -type f)
+          exit $fail
+
   # 2026-11-22：依赖高危漏洞门禁（npm audit）。--audit-level=high 表示仅在存在
   # high/critical 时失败，moderate（多为 devDependencies 传递依赖）不阻断。
   # 本地已修复 body-parser/follow-redirects/multer 三个高危；此 job 防止高危回归。

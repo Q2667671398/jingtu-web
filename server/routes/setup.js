@@ -230,45 +230,52 @@ async function isSuperAdminLive(req) {
 
 // §45：/setup/check 始终可访问（用于检测安装状态 + 引导完成态）
 router.get('/setup/check', async (req, res) => {
-  const envPath = getEnvPath();
-  const exists = fs.existsSync(envPath);
-  const wiz = readWizard();
-  const wizardCompleted = !!(wiz && wiz.completed);
-  // 报告当前会话是否为超级管理员（供前端决定是否展示「重走建站引导」按钮）
-  const authenticated = !!(req.session && req.session.userId !== undefined);
-  const isSuperAdmin = authenticated ? await isSuperAdminLive(req) : false;
-  // envValid=false：.env 缺失或缺必需项 → 前端引导重新填写 .env（原文件自动备份）
-  res.json({
-    configured: exists,
-    envValid: !exists ? false : envValid(),
-    missingEnvKeys: !exists ? REQUIRED_ENV_KEYS.slice() : missingEnvKeys(),
-    wizardCompleted,
-    authenticated,
-    isSuperAdmin
-  });
+  // async 路由必须自带 try/catch：Express 4 不捕获 async 拒绝，内部 isSuperAdminLive() 查库
+  // 若为连接类错误会命中 server.js 的 process.exit(1) 整站退出，其余错误则让请求永久挂起。
+  try {
+    const envPath = getEnvPath();
+    const exists = fs.existsSync(envPath);
+    const wiz = readWizard();
+    const wizardCompleted = !!(wiz && wiz.completed);
+    // 报告当前会话是否为超级管理员（供前端决定是否展示「重走建站引导」按钮）
+    const authenticated = !!(req.session && req.session.userId !== undefined);
+    const isSuperAdmin = authenticated ? await isSuperAdminLive(req) : false;
+    // envValid=false：.env 缺失或缺必需项 → 前端引导重新填写 .env（原文件自动备份）
+    res.json({
+      configured: exists,
+      envValid: !exists ? false : envValid(),
+      missingEnvKeys: !exists ? REQUIRED_ENV_KEYS.slice() : missingEnvKeys(),
+      wizardCompleted,
+      authenticated,
+      isSuperAdmin
+    });
+  } catch (e) { handleError(res, e, '[setup/check]'); }
 });
 
 // 读取引导隔离状态（进度 + 非敏感草稿）；已配置且无草稿时从 .env 提取非敏感项供预填
 router.get('/setup/state', async (req, res) => {
-  const envExists = fs.existsSync(getEnvPath());
-  const wiz = readWizard() || defaultWizard();
-  // P2-67：站点安装完成后仅超管可见配置拓扑/草稿；其余调用方拿到空草稿（前端预填降级为手动填写）
-  // L1：超管判定实时回库，降权后在会话期内即刻收口
-  if (isSiteInstalled() && !(await isSuperAdminLive(req))) {
-    return res.json({ configured: true, restricted: true, wizard: { completed: !!wiz.completed, step: sanitizeStep(wiz.step), drafts: {} } });
-  }
-  let drafts = wiz.drafts || {};
-  if (envExists && (!drafts || Object.keys(drafts).length === 0)) {
-    const env = readEnv(getEnvPath());
-    drafts = {
-      dbHost: env.MYSQL_HOST, dbPort: env.MYSQL_PORT, dbName: env.MYSQL_DATABASE, dbUser: env.MYSQL_USER,
-      sitePort: env.PORT, nodeEnv: env.NODE_ENV,
-      groupId: env.GROUP_ID, groupUrl: env.VRC_GROUP_URL,
-      smtpHost: env.SMTP_HOST, smtpPort: env.SMTP_PORT, smtpUser: env.SMTP_USER,
-      smtpFrom: env.SMTP_FROM, smtpSecure: env.SMTP_SECURE
-    };
-  }
-  res.json({ configured: envExists, wizard: { completed: !!wiz.completed, step: sanitizeStep(wiz.step), drafts } });
+  // 同 /setup/check：async 路由自带 try/catch，避免 DB 查询拒绝导致进程退出/请求挂起。
+  try {
+    const envExists = fs.existsSync(getEnvPath());
+    const wiz = readWizard() || defaultWizard();
+    // P2-67：站点安装完成后仅超管可见配置拓扑/草稿；其余调用方拿到空草稿（前端预填降级为手动填写）
+    // L1：超管判定实时回库，降权后在会话期内即刻收口
+    if (isSiteInstalled() && !(await isSuperAdminLive(req))) {
+      return res.json({ configured: true, restricted: true, wizard: { completed: !!wiz.completed, step: sanitizeStep(wiz.step), drafts: {} } });
+    }
+    let drafts = wiz.drafts || {};
+    if (envExists && (!drafts || Object.keys(drafts).length === 0)) {
+      const env = readEnv(getEnvPath());
+      drafts = {
+        dbHost: env.MYSQL_HOST, dbPort: env.MYSQL_PORT, dbName: env.MYSQL_DATABASE, dbUser: env.MYSQL_USER,
+        sitePort: env.PORT, nodeEnv: env.NODE_ENV,
+        groupId: env.GROUP_ID, groupUrl: env.VRC_GROUP_URL,
+        smtpHost: env.SMTP_HOST, smtpPort: env.SMTP_PORT, smtpUser: env.SMTP_USER,
+        smtpFrom: env.SMTP_FROM, smtpSecure: env.SMTP_SECURE
+      };
+    }
+    res.json({ configured: envExists, wizard: { completed: !!wiz.completed, step: sanitizeStep(wiz.step), drafts } });
+  } catch (e) { handleError(res, e, '[setup/state]'); }
 });
 
 // 持久化引导进度 + 非敏感草稿（隔离存储，不含任何密码/密钥）

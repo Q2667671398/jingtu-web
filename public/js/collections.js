@@ -180,7 +180,10 @@
     if (act === 'detail') return openDetail(id);
     if (act === 'copyid') {
       try {
-        await copyTextToClipboard(id);
+        // 复制按钮的 data-id 是 it.target_id（VRC 模型/世界 ID），而传入的 id 是卡片内部自增 id。
+        // 必须从被点击按钮取值，否则用户复制到的是无法使用的内部 id。
+        const targetId = e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.id : id;
+        await copyTextToClipboard(targetId);
         toast(__('common.operation_success'));
       } catch (e) { toast(e.message, 'error'); }
       return;
