@@ -891,7 +891,7 @@
   }
   function showErr(id, msg) { const e = $(id); if (e) { e.textContent = msg; e.classList.remove('d-none'); } }
   function hideErr(id) { const e = $(id); if (e) e.classList.add('d-none'); }
-  function toast(msg, type) { if (window.__toast) window.__toast(msg, type); else console.log(msg); }
+  function toast(msg, type) { if (window.__toast) window.__toast(msg, type); else if (window.__jtDebug) console.log(msg); }
   // P2-1: 原实现固定 1500ms 后解禁按钮，不等待 api() 返回；接口耗时 >1.5s 时按钮提前恢复，
   // 可被重复点击导致 set-avatar/recheck 重复提交。改为返回「解禁函数」，由调用方在 finally 中释放。
   function btnBusy(btn) {

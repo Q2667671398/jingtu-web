@@ -55,7 +55,7 @@ router.get('/admin/db/status', requireAdminCompat, async (req, res) => {
     });
   } catch (e) {
     logger.error('database', e);
-    fail(res, 200, safeError(e.message));
+    fail(res, 500, safeError(e.message));
   }
 });
 

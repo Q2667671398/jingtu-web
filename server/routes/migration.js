@@ -70,7 +70,7 @@ router.get('/detect', async (req, res) => {
 
     ok(res, { results });
   } catch (e) {
-    fail(res, 200, safeError(e.message), { results: [] });
+    fail(res, 500, safeError(e.message), { results: [] });
   }
 });
 
@@ -145,7 +145,7 @@ router.post('/get-databases', async (req, res) => {
     
     ok(res, { databases: filtered });
   } catch (e) {
-    fail(res, 200, safeError(e.message));
+    fail(res, 500, safeError(e.message));
   }
 });
 
@@ -175,7 +175,7 @@ router.post('/get-tables', async (req, res) => {
     
     ok(res, { tables: tableNames });
   } catch (e) {
-    fail(res, 200, safeError(e.message));
+    fail(res, 500, safeError(e.message));
   }
 });
 
@@ -360,7 +360,7 @@ router.post('/migrate', requireSuperAdmin, validateRequest(migrationValidations.
       logger.error('migration', '[migration] 关闭连接失败:', closeErr);
     }
     
-    fail(res, 200, safeError(e.message), { logs: [`[ERROR] 迁移失败：${e.message}`] });
+    fail(res, 500, safeError(e.message), { logs: [`[ERROR] 迁移失败：${e.message}`] });
   }
 });
 
@@ -396,7 +396,7 @@ router.post('/scan-config', async (req, res) => {
     
     ok(res, { files: foundFiles });
   } catch (e) {
-    fail(res, 200, safeError(e.message), { files: [] });
+    fail(res, 500, safeError(e.message), { files: [] });
   }
 });
 
@@ -541,7 +541,7 @@ router.post('/replace-config', requireSuperAdmin, validateRequest(migrationValid
     
     ok(res, { results });
   } catch (e) {
-    fail(res, 200, safeError(e.message), { results: [] });
+    fail(res, 500, safeError(e.message), { results: [] });
   }
 });
 

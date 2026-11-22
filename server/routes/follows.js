@@ -1,7 +1,7 @@
 /**
  * 境途同游 V7.10 — 关注系统路由
  * 单向关注；UNIQUE(follower_id, following_id) 防重复；关注幂等（已关注直接返回成功）。
- * 接口契约（入参/出参/越权/错误码）严格遵循 docs/10 §6.3。
+ * 接口契约（入参/出参/越权/错误码）遵循本文件内联契约注释。
  */
 const express = require('express');
 const { ok, getPool, getAvatarUrl, handleError, sendError, ErrorCodes, paginate } = require('../utils');
@@ -63,7 +63,7 @@ module.exports = function (notificationService) {
         `SELECT 1 FROM user_follows WHERE follower_id = ? AND following_id = ?`,
         [me, targetUserId]
       );
-      // 幂等：已关注直接返回成功（docs/10 §6.3）
+      // 幂等：已关注直接返回成功（见本文件内联契约注释）
       if (existing.length) {
         return ok(res, {ok: true, following: true});
       }

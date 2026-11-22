@@ -139,7 +139,7 @@ function renderEvents(events) {
       ${e.place ? `<div class="event-place">📍 ${esc(e.place)}</div>` : ''}
       <div class="event-desc">${esc(e.description || '').substring(0, 80)}${e.description && e.description.length > 80 ? '...' : ''}</div>
       ${e.worldName ? `<div class="event-world-info">🌐 ${esc(e.worldName)}</div>` : ''}
-      <div class="event-meta"><span>👤 ${__('events.participants', {n: e.participants || 0})}</span>${e.maxParticipants ? `<span>/ ${e.maxParticipants} ${__('events.max_people')}</span>` : ''}</div>
+      <div class="event-meta"><span>👤 ${__('events.participants', {n: e.participants || 0})}</span>${e.maxParticipants ? `<span>/ ${esc(String(e.maxParticipants))} ${__('events.max_people')}</span>` : ''}</div>
     </div>`;
   }).join('');
   // 渲染后同步批量工具条（可见性/计数/全选态）

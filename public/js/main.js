@@ -18,6 +18,12 @@ function scrollToTop() {
 // 定时刷新句柄提升到模块级：空闲冻结时可由 freeze.js 注册的回调统一暂停/恢复
 let refreshTimer = null;
 let _initialRefreshTimer = null;
+
+// 上传体积上限（与服务端 album 路由 multer limits.fileSize 对齐：500MB）
+const UPLOAD_LIMIT_PHOTO_MB = 500;
+// 客户端图片压缩阈值：超过此体积的图片先压缩再上传（非服务端限制）
+const IMAGE_COMPRESS_THRESHOLD_MB = 80;
+
 // V9.6+: VRChat 官方通知（含 Boop）低频轮询句柄——无需用户打开通知面板也会自动同步
 let _vrcSyncPollTimer = null;
 
@@ -817,14 +823,14 @@ async function uploadPhoto(file, caption = '', cateId = null, eventId = null) {
   if (!file) return;
   if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) { toast(__('main.select_media'), 'error'); return; }
 
-  // 上传前体积预校验（与服务端 multer limits 对齐：album 上传上限 500MB）
-  const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+  // 上传前体积预校验（与服务端 album 路由 multer limits.fileSize 对齐）
+  const MAX_UPLOAD_BYTES = UPLOAD_LIMIT_PHOTO_MB * 1024 * 1024;
   if (file.size > MAX_UPLOAD_BYTES) {
-    toast(__('main.file_too_large', { size: '500MB' }), 'error');
+    toast(__('main.file_too_large', { size: UPLOAD_LIMIT_PHOTO_MB + 'MB' }), 'error');
     return;
   }
-  // 友好提示：图片 >80MB 会先经客户端压缩；超大文件提醒用户网络耗时
-  if (file.type.startsWith('image/') && file.size > 80 * 1024 * 1024) {
+  // 友好提示：图片超过压缩阈值的先经客户端压缩；超大文件提醒用户网络耗时
+  if (file.type.startsWith('image/') && file.size > IMAGE_COMPRESS_THRESHOLD_MB * 1024 * 1024) {
     toast(__('main.image_compressing'), 'info');
   }
 

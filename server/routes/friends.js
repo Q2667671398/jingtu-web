@@ -2,8 +2,8 @@
  * 境途同游 V7.10 — 好友系统路由
  * 单向行 + status 表示 user_id 对 friend_id 的视角；
  *   accepted 写两条对称行便于双向查询；
- *   blocked 单向优先（私聊模块据此拦截，见 docs/10 §3 / §4.2）。
- * 接口契约（入参/出参/越权/错误码）严格遵循 docs/10 §3.3。
+ *   blocked 单向优先（私聊模块据此拦截，见本文件内联契约注释）。
+ * 接口契约（入参/出参/越权/错误码）遵循本文件内联契约注释。
  */
 const express = require('express');
 const { ok,  getPool, getAvatarUrl, handleError, sendError, ErrorCodes, paginate  } = require('../utils');;

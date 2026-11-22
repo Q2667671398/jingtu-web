@@ -1,6 +1,6 @@
 // 境途 × 境途同游 联动接口骨架（挂载前缀 /api/jtt）
 // 依据：p2p/docs/04-jingtu-web-integration.md（契约 0.3 草案）
-// 本文件已实现联调：方向①②③④ 的数据库读写、ED25519 验签、绑定码 TOFU 注册均落地；见 docs/24 联调说明。
+// 本文件已实现联调：方向①②③④ 的数据库读写、ED25519 验签、绑定码 TOFU 注册均落地；本文件头注释即契约说明。
 // 四个方向：
 //   ① 账号文件签发（管理端 super_admin，Session + CSRF）
 //   ② 游戏状态上报（客户端，X-JTT-* 头 + ED25519 签名认证，免 Session）
@@ -128,7 +128,7 @@ function buildAccountFile(row, opts) {
 }
 
 // RAW_BODY 近似值：无 body 签空串；有 body 用 JSON.stringify 重序列化（express.json 先解析，
-// 精确原文需前置捕获中间件，见 docs/24 §8 待确认项）。客户端须按同一规则构造签名串。
+// 精确原文需前置捕获中间件，签名串规则见本文件常量说明）。客户端须按同一规则构造签名串。
 function rawBodyApprox(req) {
   if (typeof req.body === 'string') return req.body;
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {

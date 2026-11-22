@@ -1,5 +1,5 @@
 // ==================== 关注系统（成员端） ====================
-// 对应后端 server/routes/follows.js（docs/10 §6）。
+// 对应后端 server/routes/follows.js（契约见后端 follows.js 内联注释）。
 // 通过 GET/POST/DELETE /api/follows/* 驱动；目标用户通过 GET /api/users/search 发现。
 (function () {
   'use strict';

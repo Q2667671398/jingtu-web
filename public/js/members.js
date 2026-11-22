@@ -1521,7 +1521,7 @@ async function vrcSendFriendRequest(targetUserId, btn) {
 
 // ==================== F-24 VRChat 个人写操作（Boop / 备注） ====================
 // 两个写接口均要求已绑定 VRChat 账号（NEED_BIND 由后端引导）；真实调用需 VRChat
-// 官方 API 权限与互为好友关系，交付后以真实账号联调验证（见 docs/19 F-24）。
+// 官方 API 权限与互为好友关系，交付后以真实账号联调验证（见 server/routes 对应实现）。
 async function vrcBoop(targetUserId, btn) {
   if (!targetUserId) return;
   if (btn) btn.disabled = true;

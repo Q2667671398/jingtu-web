@@ -11,6 +11,7 @@ const router = express.Router();
 const { getPool, handleError } = require('../utils');
 const { requireAuth } = require('../auth');
 const logger = require('../logger');
+const { ACHIEVEMENT_CONDITION_STREAK, ACHIEVEMENT_CONDITION_TOTAL } = require('../constants');
 
 async function checkAndUnlock(userId, type, data) {
   try {
@@ -30,9 +31,9 @@ async function checkAndUnlock(userId, type, data) {
       );
       
       let progress = data.value !== undefined ? data.value : data;
-      if (achievement.condition_type === 'streak') {
+      if (achievement.condition_type === ACHIEVEMENT_CONDITION_STREAK) {
         progress = data.streak !== undefined ? data.streak : (data.value !== undefined ? data.value : data);
-      } else if (achievement.condition_type === 'total') {
+      } else if (achievement.condition_type === ACHIEVEMENT_CONDITION_TOTAL) {
         progress = data.total !== undefined ? data.total : (data.value !== undefined ? data.value : data);
       } else {
         progress = data.value !== undefined ? data.value : data;

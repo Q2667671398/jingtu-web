@@ -1,5 +1,5 @@
 // ==================== 好友系统（成员端） ====================
-// 对应后端 server/routes/friends.js（docs/10 §3）。
+// 对应后端 server/routes/friends.js（契约见后端 friends.js 内联注释）。
 // 通过 GET/POST/DELETE /api/friends/* 驱动；目标用户通过 GET /api/users/search 发现。
 (function () {
   'use strict';

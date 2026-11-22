@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { fail, ok, getPool, handleError, sendError, ErrorCodes } = require('./utils');
 const { passwordResetLimiter } = require('./middleware/rate_limit');
 const { hashPassword, validatePasswordStrength } = require('./auth');
+const { PASSWORD_RESET_CODE_MIN, PASSWORD_RESET_CODE_MAX_EXCLUSIVE, PASSWORD_RESET_CODE_TTL_MS } = require('./constants');
 const logger = require('./logger');
 const mailer = require('./mailer');
 
@@ -106,8 +107,8 @@ function registerResetRoutes(router) {
     // AUTH-3/4: 无论账号是否存在都返回真实随机 token 与同构响应，杜绝存在性枚举 oracle。
     const token = crypto.randomBytes(32).toString('hex');
     // AUTH-3: OTP 熵提升至 8 位数字（~26.6 bit，原 6 位仅 ~20 bit），配合 5 次尝试上限
-    const code = crypto.randomInt(10000000, 100000000).toString();
-    const expireAt = Date.now() + 15 * 60 * 1000;
+    const code = crypto.randomInt(PASSWORD_RESET_CODE_MIN, PASSWORD_RESET_CODE_MAX_EXCLUSIVE).toString();
+    const expireAt = Date.now() + PASSWORD_RESET_CODE_TTL_MS;
 
     if (users.length === 0) {
       // M-1：不存在的邮箱此前只返回 token、不写 state，导致 verify 阶段返回 expired，

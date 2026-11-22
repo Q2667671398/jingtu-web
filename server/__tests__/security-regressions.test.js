@@ -290,7 +290,7 @@ describe('security regressions', () => {
     expect(standalone2fa).not.toMatch(/req\.session\.regenerate/);
   });
 
-  // P1（docs/12）：VRChat /auth/user 在 2FA 待验证阶段不返回 id，模式 A 必须先进入 2FA 流程，
+  // P1（见 docs/06 §2）：VRChat /auth/user 在 2FA 待验证阶段不返回 id，模式 A 必须先进入 2FA 流程，
   // 绑定查询只能等 2FA 验证通过后（模式 B / 独立端点）执行——否则已绑定+2FA 用户会被误判"未绑定"。
   test('2FA 用户第一步登录不落入"未绑定"误判（P1）', () => {
     const modeA = sliceBetween(files.vrcService, '// ══════════ 模式 A', '// ==================== VRChat 独立 2FA 验证');
@@ -1208,7 +1208,7 @@ describe('security regressions', () => {
   });
 });
 
-// ==================== M4:语言包键集合一致性（docs/12） ====================
+// ==================== M4:语言包键集合一致性（见 docs/08） ====================
 // 背景：6 份语言文件历史键数一致但键序漂移（各自手改插入位置不同），无法按行号校验；
 // 新增文案容易漏补语言。此处按键集合对比（与 scripts/check-lang-keys.js 同逻辑，供 CI 回归）。
 describe('语言包键集合一致性（M4）', () => {

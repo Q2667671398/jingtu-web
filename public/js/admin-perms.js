@@ -33,7 +33,7 @@ async function loadPermissions() {
       const sel = document.getElementById('permInspectUser');
       if (sel) {
         sel.innerHTML = '<option value="">' + __('admin_perms.select_user') + '</option>' +
-          permInspectCache.map(u => `<option value="${u.id}">${esc(u.displayName || u.loginId)}</option>`).join('');
+          permInspectCache.map(u => `<option value="${escAttr(String(u.id))}">${esc(u.displayName || u.loginId)}</option>`).join('');
       }
     }
   } catch {}
@@ -46,7 +46,7 @@ function onPermInspectSearch(value) {
   sel.innerHTML = '<option value="">' + __('admin_perms.select_user') + '</option>' +
     permInspectCache
       .filter(u => (u.displayName || u.loginId || '').toLowerCase().includes(v))
-      .map(u => `<option value="${u.id}">${esc(u.displayName || u.loginId)}</option>`).join('');
+      .map(u => `<option value="${escAttr(String(u.id))}">${esc(u.displayName || u.loginId)}</option>`).join('');
 }
 
 async function inspectUserPermissions(userId) {
@@ -361,7 +361,7 @@ function filterPermGroupUsers() {
   if (!container) return;
   const filtered = pgUsersCache.filter(u => (u.displayName || u.loginId || '').toLowerCase().includes(searchText));
   container.innerHTML = filtered.map(u => `
-    <div class="admin-user-card" data-action="perm-user-group-mgmt" data-user-id="${u.id}" data-user-name="${escAttr(u.displayName || u.loginId)}">
+    <div class="admin-user-card" data-action="perm-user-group-mgmt" data-user-id="${escAttr(String(u.id))}" data-user-name="${escAttr(u.displayName || u.loginId)}">
       <img src="${escAttr(u.avatarUrl || '/api/avatar/default')}" class="admin-user-avatar" loading="lazy" data-avatar-fail-src="${escAttr(u.avatarUrl || '/api/avatar/default')}">
       <div class="admin-user-info">
         <div class="admin-user-name">${esc(u.displayName || u.loginId)}</div>

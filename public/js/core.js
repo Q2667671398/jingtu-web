@@ -100,7 +100,7 @@ let currentUser = null;
 // defineProperty + getter 让这些成员实时反射 currentUser，修复历史断链——
 // collections.js / vrc_favorites.js 曾引用 5 个全仓库未定义的悬空全局，
 // 导致 isLoggedIn() 恒 false、收藏操作被拦截、toast 与默认头像失效
-// （见 docs/12-审计问题清单-2026-10-09.md M1）。
+// （见 docs/08-开发指南.md）。
 // 注意：__isLoggedIn / __isAdmin 调用方按"函数"契约调用（`__isLoggedIn && __isLoggedIn()`），
 // 因此 getter 必须返回函数而不是 boolean——否则 `window.__isLoggedIn()` 会 TypeError。
 Object.defineProperties(window, {

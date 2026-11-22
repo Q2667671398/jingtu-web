@@ -110,7 +110,7 @@ describe('同名全局函数不得跨文件重复定义（后加载者会静默�
     // 这类文件不会报任何错，只会让人以为功能存在。
     //
     // 例外（有意下线、保留资产的脚本，删除前先确认security-regressions仍引用）：
-    //   live.js —— 前端直播模块已从 loader.js ROUTE_MODULES 移除（docs/19 P1-5：
+    //   live.js —— 前端直播模块已从 loader.js ROUTE_MODULES 移除（P1-5：
     //   缺外部转码管线）。2026-09-12 P1-5 收尾：后端路由也已卸载并归档至
     //   routes/_archive/live.js，DISABLED_FEATURES 成为唯一事实来源。
     //   security-regressions.test.js 仍读取该文件校验"前端上传契约与后端对齐"，

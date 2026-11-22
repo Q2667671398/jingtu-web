@@ -171,7 +171,7 @@ router.post('/vrchat-login', vrcLoginLimiter, async (req, res) => {
       }
       loginTokens.delete(loginToken);
 
-      // 🔴 P1 修复（docs/12）：VRChat /auth/user 在 2FA 待验证阶段不返回 id，
+      // 🔴 P1 修复（docs/06 §2）：VRChat /auth/user 在 2FA 待验证阶段不返回 id，
       // 第一步（模式 A）无法据此查绑定。绑定只能等 2FA 验证通过、拿到真实 id 后再查，
       // 否则已绑定 + 开启 2FA 的用户会被误判"未绑定"而永远无法登录。
       if (!vResult.user || !vResult.user.id) {
@@ -240,7 +240,7 @@ router.post('/vrchat-login', vrcLoginLimiter, async (req, res) => {
     const cookie = login.cookie;
     const needs2fa = login.needs2fa;
 
-    // 🔴 P1 修复（docs/12）：VRChat /auth/user 在 2FA 待验证阶段不返回 id，
+    // 🔴 P1 修复（docs/06 §2）：VRChat /auth/user 在 2FA 待验证阶段不返回 id，
     // 此时查绑定必然查不到而误报"未绑定"。需要 2FA 的账号先进入 2FA 流程，
     // 验证通过拿到真实 id 后再查绑定（模式 B 已同步处理）。
     if (needs2fa) {
@@ -342,7 +342,7 @@ router.post('/vrchat-2fa', vrc2faLimiter, async (req, res) => {
     }
     loginTokens.delete(loginToken);
 
-    // 🔴 P1 修复（docs/12）：同上——2FA 验证通过拿到真实 id 后再查绑定
+    // 🔴 P1 修复（docs/06 §2）：同上——2FA 验证通过拿到真实 id 后再查绑定
     if (!vResult.user || !vResult.user.id) {
       return fail(res, 401, '2FA 验证通过后 VRChat 未返回账号信息，请稍后重试', { code: ErrorCodes.VRC_AUTH_FAILED });
     }

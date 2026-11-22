@@ -173,7 +173,7 @@ function fail(res, status, message, extra) {
 
 /**
  * 分页参数统一解析（P2-70）：收口全站 34 处 page/pageSize/limit 钳位写法。
- * 与站点原语义一致，仅两处刻意统一（docs/21 勾销注记已记）：
+ * 与站点原语义一致，仅两处刻意统一（历史勾销注记已记，见 docs/09）：
  *   1) page 恒有下界 1、pageSize 恒有下界 1 —— 原缺下界的站点传负数会产生
  *      负 OFFSET 直接 SQL 500，借收口顺带修复；
  *   2) parseInt 统一 radix 10 —— "0x10" 之类十六进制串改判非法回落默认值。

@@ -116,7 +116,10 @@ module.exports = function (authStateRef, notificationService, getVRCCookieUserOn
       try {
         const resp = await vrchatGetNotifications(cookie, 50, 0);
         if (!resp || resp.status !== 200) {
-          return fail(res, 502, (resp && resp.data && resp.data.error && resp.data.error.message) || 'VRChat 通知拉取失败');
+          // 安全：上游 error.message 属任意外部文本（可能含内部细节），只记日志不回吐客户端
+          const upstreamMsg = resp && resp.data && resp.data.error && resp.data.error.message;
+          if (upstreamMsg) logger.warn('[notifications/vrc-sync] 上游错误', upstreamMsg);
+          return fail(res, 502, 'VRChat 通知拉取失败', { code: ErrorCodes.VRC_UPSTREAM_ERROR });
         }
         const list = Array.isArray(resp.data) ? resp.data : [];
         if (_vrcSyncThrottle.size > 10000) _vrcSyncThrottle.clear();

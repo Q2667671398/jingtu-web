@@ -63,7 +63,7 @@ function stopGroupLocation(groupId, silent) {
   // 清理本端位置栏中自己的项
   if (groupLocationMarkers[groupId]) delete groupLocationMarkers[groupId][currentUser.id];
   const myBar = document.getElementById('groupLocationBar');
-  const myEl = myBar && myBar.querySelector(`[data-uid="${currentUser.id}"]`);
+  const myEl = findGroupLocItem(myBar, currentUser.id);
   if (myEl) myEl.remove();
   if (groupLocLastSeen[groupId]) delete groupLocLastSeen[groupId][currentUser.id];
 
@@ -153,7 +153,7 @@ function startGroupLocSweep() {
       if (now - seen[uid] > LOC_STALE_MS) {
         delete seen[uid];
         if (groupLocationMarkers[gid]) delete groupLocationMarkers[gid][uid];
-        const el = bar && bar.querySelector(`[data-uid="${uid}"]`);
+        const el = findGroupLocItem(bar, uid);
         if (el) el.remove();
       }
     }
@@ -214,6 +214,17 @@ function viewUserOnMap(userId) {
   setTimeout(tryLocate, 300);
 }
 
+// 用属性遍历查找标记，避免把非数值 userId 拼进 CSS 选择器导致注入/语法错误
+function findGroupLocItem(locBar, uid) {
+  if (!locBar) return null;
+  const target = String(uid);
+  const items = locBar.querySelectorAll('.group-loc-item');
+  for (let i = 0; i < items.length; i++) {
+    if (String(items[i].dataset.uid) === target) return items[i];
+  }
+  return null;
+}
+
 // ==================== 群聊位置标记管理（小地图用） ====================
 // 简化版：在聊天框内显示位置提示
 function showGroupLocationOnChat(msg) {
@@ -225,7 +236,7 @@ function showGroupLocationOnChat(msg) {
   const locBar = document.getElementById('groupLocationBar');
   if (!locBar) return;
   // 更新或追加
-  let userLoc = locBar.querySelector(`[data-uid="${msg.userId}"]`);
+  let userLoc = findGroupLocItem(locBar, msg.userId);
   if (!userLoc) {
     const el = document.createElement('div');
     el.dataset.uid = msg.userId;
@@ -240,7 +251,7 @@ function showGroupLocationOnChat(msg) {
 function hideGroupLocationOnChat(userId) {
   const locBar = document.getElementById('groupLocationBar');
   if (locBar) {
-    const el = locBar.querySelector(`[data-uid="${userId}"]`);
+    const el = findGroupLocItem(locBar, userId);
     if (el) el.remove();
   }
 }
