@@ -106,3 +106,16 @@ server/browser-audit/
 # AI 助手本地状态目录
 /.workbuddy/
 /.codebuddy/
+
+# ===== 临时分析/备份产物（仓库卫生，2026-11-23）=====
+# 依赖升级/审查时生成的备份与临时脚本，保留在工作区但不入库
+*.bak-20*
+public/css/_analysis*.py
+public/css/_analysis*.txt
+public/css/_lines.py
+public/css/_report.txt
+audit_*_scan.js
+# 误重定向产生的 0 字节文件（文件名含大括号，用转义匹配）
+server/{try*
+# 根目录散落的发布包（非源码，备份请走 releases 流程）
+/*.zip

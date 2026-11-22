@@ -5,7 +5,8 @@ let eventsLoading = false;
 // 批量管理：当前已勾选（可管理）的活动 id 集合
 let selectedEventIds = new Set();
 
-async function loadEvents(status = 'ongoing') {
+// 默认状态与 currentEvtStatus 初值保持一致（'all' = 不加 status 参数，显示所有活动）。
+async function loadEvents(status = 'all') {
   const container = document.getElementById('eventsList');
   if (eventsLoading) return;
   eventsLoading = true;
