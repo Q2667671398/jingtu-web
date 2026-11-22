@@ -48,38 +48,38 @@
       imagesrcset="/assets/group-hero-960.jpg 960w, /assets/group-hero.jpg 1920w"
       imagesizes="100vw" fetchpriority="high">
 <!-- 首屏关键 CSS：阻塞渲染（页面骨架 / 设计令牌 / 基础 UI / 导航 / 首页内容） -->
-<link rel="stylesheet" href="/css/style.css?v=20261026d">
-  <link rel="stylesheet" href="/css/ui-components.css?v=20261026d">
-  <link rel="stylesheet" href="/css/ui-enhance.css?v=20261026d">
+<link rel="stylesheet" href="/css/style.css?v=20261122c">
+  <link rel="stylesheet" href="/css/ui-components.css?v=20261122c">
+  <link rel="stylesheet" href="/css/ui-enhance.css?v=20261122c">
   <!-- 设计系统统一层必须最后加载（覆盖历史冲突定义，见 99-design-system.css 文件头契约） -->
-  <link rel="stylesheet" href="/css/99-design-system.css?v=20261026d">
-<link rel="stylesheet" href="/css/nav-scroller.css?v=20261026d">
-<link rel="stylesheet" href="/css/home-featured.css?v=20261026d">
-<link rel="stylesheet" href="/css/home-enhance.css?v=20261026d">
-<link rel="stylesheet" href="/css/animations.css?v=20261026d">
+  <link rel="stylesheet" href="/css/99-design-system.css?v=20261122c">
+<link rel="stylesheet" href="/css/nav-scroller.css?v=20261122c">
+<link rel="stylesheet" href="/css/home-featured.css?v=20261122c">
+<link rel="stylesheet" href="/css/home-enhance.css?v=20261122c">
+<link rel="stylesheet" href="/css/animations.css?v=20261122c">
 <!-- 点赞动效（like-burst）：给 post/album 等点赞按钮加心爆裂动画 + 无障碍兜底 -->
-<link rel="stylesheet" href="/css/likes-anim.css?v=20261026d">
+<link rel="stylesheet" href="/css/likes-anim.css?v=20261122c">
 <!-- 功能隐藏：直播入口 #tab-btn-live / 管理侧栏 live / #tab-live 面板统一不显示。
      兜底性兜底：即使 JS 误把 #tab-live 设为 active，也会被 CSS 强制隐藏。 -->
-<link rel="stylesheet" href="/css/feature-disabled.css?v=20261026d">
+<link rel="stylesheet" href="/css/feature-disabled.css?v=20261122c">
 <!-- 非首屏 CSS：改为非阻塞异步加载（media=print 命中后切回 all），避免拖慢 LCP；
      首屏默认落在 home Tab，members/collections/social/地图/“更多”菜单等样式多为
      第二屏或弹层，异步加载后由浏览器空闲补全，导航到对应 Tab 时已就绪（P2-21） -->
-<link rel="stylesheet" href="/css/06b-presence.css?v=20261026d" media="print">
-<link rel="stylesheet" href="/css/06-members.css?v=20261026d" media="print">
-<link rel="stylesheet" href="/css/collections.css?v=20261026d" media="print">
-<link rel="stylesheet" href="/css/10-social.css?v=20261026d" media="print">
-<link rel="stylesheet" href="/css/baidu-modern.css?v=20261026d" media="print">
+<link rel="stylesheet" href="/css/06b-presence.css?v=20261122c" media="print">
+<link rel="stylesheet" href="/css/06-members.css?v=20261122c" media="print">
+<link rel="stylesheet" href="/css/collections.css?v=20261122c" media="print">
+<link rel="stylesheet" href="/css/10-social.css?v=20261122c" media="print">
+<link rel="stylesheet" href="/css/baidu-modern.css?v=20261122c" media="print">
 <!-- V9.4 地图 VRChat 世界面板样式（异步加载） -->
-<link rel="stylesheet" href="/css/worlds-panel.css?v=20261026d" media="print">
-<noscript><link rel="stylesheet" href="/css/worlds-panel.css?v=20261026d"></noscript>
+<link rel="stylesheet" href="/css/worlds-panel.css?v=20261122c" media="print">
+<noscript><link rel="stylesheet" href="/css/worlds-panel.css?v=20261122c"></noscript>
 <!-- 无 JS 兜底：保证禁用 JS 时样式仍加载 -->
 <noscript>
-  <link rel="stylesheet" href="/css/06b-presence.css?v=20261026d">
-  <link rel="stylesheet" href="/css/06-members.css?v=20261026d">
-  <link rel="stylesheet" href="/css/collections.css?v=20261026d">
-  <link rel="stylesheet" href="/css/10-social.css?v=20261026d">
-  <link rel="stylesheet" href="/css/baidu-modern.css?v=20261026d">
+  <link rel="stylesheet" href="/css/06b-presence.css?v=20261122c">
+  <link rel="stylesheet" href="/css/06-members.css?v=20261122c">
+  <link rel="stylesheet" href="/css/collections.css?v=20261122c">
+  <link rel="stylesheet" href="/css/10-social.css?v=20261122c">
+  <link rel="stylesheet" href="/css/baidu-modern.css?v=20261122c">
 </noscript>
   <meta name="description" content="境途同游是一个面向 VRChat 玩家的社群平台，提供群组相册、活动报名、动态分享、成员地图与实时聊天，记录你在虚拟世界里的每一次同游。">
   <meta property="og:type" content="website">
@@ -111,12 +111,12 @@
         return 'zh';
       }
       // 解析期 document.write 外部脚本为阻塞式，保证在 i18n.js 之前就绪
-      document.write('<script src="/js/languages/' + detectLang() + '.js?v=20261026d"><\/script>');
+      document.write('<script src="/js/languages/' + detectLang() + '.js?v=20261122c"><\/script>');
     })();
   </script>
   <!-- SEO 注入器：根据 location.origin 写 og:url / og:site_name，并注入 Organization + WebSite JSON-LD。
        必须在 i18n 之后（依赖 window.__）、在 loader.js / ui.js 之前（确保 og:url 尽早被爬虫读取）。 -->
-  <script src="/js/seo.js?v=20261026d"></script>
+  <script src="/js/seo.js?v=20261122c"></script>
   <!-- 首屏性能量化（P2-21）：?perf=1 时上报 LCP/FCP 到 console，便于回归比对；
        生产默认关闭，零副作用。仅观测，不改写任何渲染行为。 -->
   <script>
@@ -168,12 +168,12 @@
     <div class="login-box-glow"></div>
     <div id="loginLoading" class="login-loading-box">
       <div class="login-spinner"></div>
-      <p class="login-loading-text" data-i18n="login.checking_status">正在检查登录状态...</p>
+      <p class="login-loading-text" data-i18n="login.checking_status">正在检查登录状态…</p>
     </div>
     <div class="login-logo">
       <div class="login-logo-icon">
         <div class="login-logo-ring"></div>
-        <img id="loginLogoImg" class="login-logo-img" src="/assets/group-avatar-192.png" alt="境途同游" data-i18n="app.title" decoding="async">
+        <img id="loginLogoImg" class="login-logo-img" src="/assets/group-avatar-192.png" alt="境途同游" data-i18n="app.title" width="80" height="80" decoding="async">
       </div>
       <h2 class="login-title" data-i18n="app.title">境途同游</h2>
       <p class="login-subtitle" id="loginSubtitle" data-i18n="app.subtitle">VRChat · 同游 · 同行</p>
@@ -365,11 +365,11 @@
       <!-- 步骤1：环境检查 -->
       <div id="initStepCheck" class="init-step-panel">
         <div class="init-step-title"><span aria-hidden="true">🔍 </span><span data-i18n="init.env_title">系统环境检查</span></div>
-        <div class="init-step-desc" data-i18n="init.env_checking">正在检测服务状态，请稍候...</div>
+        <div class="init-step-desc" data-i18n="init.env_checking">正在检测服务状态，请稍候…</div>
         <div id="initEnvStatus" class="init-env-status">
           <div class="init-loading-spinner"></div>
         </div>
-        <button type="button" id="initNextBtn" class="login-btn mt-16" disabled data-i18n="init.checking">检查中...</button>
+        <button type="button" id="initNextBtn" class="login-btn mt-16" disabled data-i18n="init.checking">检查中…</button>
       </div>
 
       <!-- 步骤2：创建管理员 -->
@@ -440,7 +440,7 @@
     </div>
     <div class="header-actions">
       <div class="header-search pos-relative">
-        <input type="text" id="globalSearch" placeholder="🔍 搜索成员、活动、公告..." data-i18n-placeholder="main.search_placeholder" class="global-search-input" aria-label="全站搜索" data-i18n-aria="main.search_aria">
+        <input type="text" id="globalSearch" placeholder="🔍 搜索成员、活动、公告…" data-i18n-placeholder="main.search_placeholder" class="global-search-input" aria-label="全站搜索" data-i18n-aria="main.search_aria">
         <div id="globalSearchResults" class="search-results-dropdown"></div>
       </div>
       <div class="notification-wrap">
@@ -502,7 +502,7 @@
        decoding=async 避免大图解码阻塞主线程 -->
   <img id="heroImg" class="hero-bg-img" src="/assets/group-hero.jpg"
        srcset="/assets/group-hero-960.jpg 960w, /assets/group-hero.jpg 1920w"
-       sizes="100vw" alt="背景" fetchpriority="high" decoding="async">
+       sizes="100vw" alt="" fetchpriority="high" decoding="async">
   <div id="heroGradientOverlay" class="hero-gradient-overlay"></div>
   <canvas id="heroParticles" class="hero-particles"></canvas>
   <div class="hero-overlay">
@@ -694,7 +694,7 @@
   <!-- Tab: 成员 -->
   <div id="tab-members" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-members">
     <div class="flex-row gap-8 mb-12 flex-wrap">
-      <input type="text" class="search-box m-0 flex-1" placeholder="🔍 搜索成员名称或登录ID..." data-i18n-placeholder="members.search_placeholder" aria-label="搜索成员" data-i18n-aria="members.search_aria">
+      <input type="text" class="search-box m-0 flex-1" placeholder="🔍 搜索成员名称或登录ID…" data-i18n-placeholder="members.search_placeholder" aria-label="搜索成员" data-i18n-aria="members.search_aria">
       <select id="memberRoleFilter" class="search-box w-auto" aria-label="按角色筛选成员" data-i18n-aria="members.filter_role_aria">
         <option value="" data-i18n="members.filter_role_all">全部身份</option>
         <option value="super_admin" data-i18n="members.filter_role_super_admin">超级管理员</option>
@@ -782,7 +782,7 @@
         <button type="button" id="groupRoleCreateBtn" class="btn btn-sm btn-outline" data-i18n="group.role_create_btn">创建角色</button>
       </div>
       <div class="flex-row gap-6 mt-8 flex-wrap">
-        <input id="groupRoleUserId" class="group-admin-input" data-i18n-placeholder="group.user_id_placeholder" placeholder="成员 VRChat ID（usr_...）">
+        <input id="groupRoleUserId" class="group-admin-input" data-i18n-placeholder="group.user_id_placeholder" placeholder="成员 VRChat ID（usr_…）">
         <select id="groupRoleSelect" class="group-admin-select" data-i18n-aria="group.role_select_aria" aria-label="选择群角色"></select>
         <button type="button" id="groupRoleAddBtn" class="btn btn-sm btn-outline" data-i18n="group.role_grant_btn">授予</button>
         <button type="button" id="groupRoleRemoveBtn" class="btn btn-sm btn-outline" data-i18n="group.role_remove_btn">移除</button>
@@ -794,7 +794,7 @@
     <section id="groupBansSection" class="group-changes-section admin-only mt-16"><div class="group-changes-head"><span data-i18n="group.admin_bans">群黑名单</span> <span id="groupBansCount" class="text-muted2 text-12"></span></div>
       <div id="groupBansList" class="group-changes-list"></div>
       <div class="flex-row gap-6 mt-8 flex-wrap">
-        <input id="groupBanUserId" class="group-admin-input" data-i18n-placeholder="group.user_id_placeholder" placeholder="成员 VRChat ID（usr_...）">
+        <input id="groupBanUserId" class="group-admin-input" data-i18n-placeholder="group.user_id_placeholder" placeholder="成员 VRChat ID（usr_…）">
         <button type="button" id="groupBanBtn" class="btn btn-sm btn-outline" data-i18n="group.ban_btn">加入黑名单</button>
       </div>
     </section>
@@ -912,7 +912,7 @@
 
         <!-- 筛选栏 -->
         <div class="coll-filters flex-row gap-8 mb-8 flex-wrap" id="collFilters">
-          <input type="text" id="collSearch" class="search-box m-0 flex-1" placeholder="搜索 ID / 名称 / 作者 / 描述..." data-i18n-placeholder="collections.search_placeholder" data-i18n-aria="collections.search_aria" aria-label="搜索">
+          <input type="text" id="collSearch" class="search-box m-0 flex-1" placeholder="搜索 ID / 名称 / 作者 / 描述…" data-i18n-placeholder="collections.search_placeholder" data-i18n-aria="collections.search_aria" aria-label="搜索">
           <select id="collStatusFilter" class="search-box m-0 coll-filter-sm" data-i18n-aria="collections.filter_status_aria" aria-label="按状态筛选">
             <option value="" data-i18n="collections.filter_status_all">全部状态</option>
             <option value="valid" data-i18n="collections.filter_status_valid">有效</option>
@@ -1054,7 +1054,7 @@
         <button type="button" class="post-filter-btn" data-type="text">📝 <span data-i18n="posts.type_text">文字</span></button>
       </div>
     </div>
-    <div id="postsList" class="posts-list"><div class="loading"><span data-i18n="common.loading">加载中...</span></div></div>
+    <div id="postsList" class="posts-list"><div class="loading"><span data-i18n="common.loading">加载中…</span></div></div>
     <div id="postsPagination" class="text-center mt-8"><button type="button" id="postsLoadMoreBtn" class="btn btn-sm btn-outline d-none">📦 <span data-i18n="posts.load_more">加载更多</span></button></div>
   </div>
 
@@ -1087,7 +1087,7 @@
       <button type="button" id="albumRecycleBtn" class="btn btn-sm btn-outline">🗑️ <span data-i18n="album.recycle_btn">回收站</span></button>
     </div>
     <div id="uploadProgress" class="upload-progress-wrap d-none">
-      <div class="upload-progress-label"><span id="uploadProgressText" data-i18n="main.uploading">上传中...</span><span id="uploadProgressPercent">0%</span></div>
+      <div class="upload-progress-label"><span id="uploadProgressText" data-i18n="main.uploading">上传中…</span><span id="uploadProgressPercent">0%</span></div>
       <div class="upload-progress-track"><div id="uploadProgressFill" class="upload-progress-fill"></div></div>
       <div id="uploadProgressFile" class="upload-progress-file"></div>
     </div>
@@ -1131,7 +1131,7 @@
       <label class="mt-8 d-block" data-i18n="collections.notes">备注</label>
       <textarea id="collAddNotes" class="search-box" rows="2" aria-label="备注" data-i18n-aria="collections.notes"></textarea>
       <label class="mt-8 d-block" data-i18n="collections.booth_url">BOOTH 商品链接（模型选填）</label>
-      <input type="url" id="collAddBooth" class="search-box" placeholder="https://booth.pm/..." aria-label="BOOTH链接" data-i18n-aria="collections.booth_url">
+      <input type="url" id="collAddBooth" class="search-box" placeholder="https://booth.pm/…" aria-label="BOOTH链接" data-i18n-aria="collections.booth_url">
       <label class="mt-8 d-flex align-center gap-4"><input type="checkbox" id="collAddPublic"> <span data-i18n="collections.public">公开此收藏</span></label>
       <div id="collAddError" class="text-13 text-red d-none mt-4"></div>
     </div>
@@ -1143,7 +1143,7 @@
     <div class="modal-header"><h3 data-i18n="collections.new_folder">新建分组</h3><button type="button" class="modal-close" aria-label="关闭">&times;</button></div>
     <div class="modal-body">
       <label data-i18n="collections.folder_name">分组名称</label>
-      <input type="text" id="collFolderName" class="search-box" placeholder="如：常用模型、出游世界..." aria-label="分组名称" data-i18n-placeholder="collections.folder_name_ph" data-i18n-aria="collections.folder_name">
+      <input type="text" id="collFolderName" class="search-box" placeholder="如：常用模型、出游世界…" aria-label="分组名称" data-i18n-placeholder="collections.folder_name_ph" data-i18n-aria="collections.folder_name">
       <div id="collFolderError" class="text-13 text-red d-none mt-4"></div>
     </div>
     <div class="form-actions mt-8"><button type="button" id="collFolderConfirmBtn" class="btn btn-accent" data-i18n="common.save">保存</button><button type="button" class="btn btn-outline coll-modal-cancel" data-i18n="common.cancel">取消</button></div>
@@ -1226,7 +1226,7 @@
           <section class="admin-panel d-none" data-panel="users">
           <div class="card p-16 mt-16" id="adminUsersSection"><div class="admin-card-header"><span class="admin-section-icon">👥</span><h3 data-i18n="admin.users">用户管理</h3></div>
       <div class="flex-row gap-8 mb-8 flex-wrap">
-        <input type="text" id="adminUserSearch" class="search-box m-0 flex-1" placeholder="搜索用户（登录名/显示名）..." data-i18n-placeholder="admin.search_user_placeholder" aria-label="搜索用户">
+        <input type="text" id="adminUserSearch" class="search-box m-0 flex-1" placeholder="搜索用户（登录名/显示名）…" data-i18n-placeholder="admin.search_user_placeholder" aria-label="搜索用户">
         <select id="adminUserRoleFilter" class="search-box m-0 admin-filter-sm" aria-label="按角色筛选用户">
           <option value="">全部角色</option>
           <option value="super_admin">超级管理员</option>
@@ -1255,7 +1255,7 @@
               <p class="text-13 text-muted2 mb-8">激活码保存在服务器本地文件（离线可用）。生成后分发给用户注册使用；支持设置有效期，过期后注册将提示已过期；已使用的码永久绑定，未使用的码可作废。</p>
               <div class="admin-dashboard mb-8" id="activationCodeStats"></div>
               <div class="flex-row gap-8 mb-8 flex-wrap">
-                <input type="text" id="activationCodeSearch" class="search-box m-0 flex-1" placeholder="搜索激活码 / 备注 / 创建人..." aria-label="搜索激活码">
+                <input type="text" id="activationCodeSearch" class="search-box m-0 flex-1" placeholder="搜索激活码 / 备注 / 创建人…" aria-label="搜索激活码">
                 <select id="activationCodeStatusFilter" class="search-box m-0 admin-filter-sm" aria-label="按状态筛选激活码">
                   <option value="">全部状态</option>
                   <option value="unused">未使用</option>
@@ -1277,7 +1277,7 @@
           <div class="card p-16 mt-16" id="adminManageSection"><div class="admin-card-header"><span class="admin-section-icon">🔐</span><h3>管理员管理</h3></div>
       <p class="text-13 text-muted2 mb-8">超级管理员可在此创建 / 编辑其他管理员，并查看其权限归属。</p>
       <div class="flex-row gap-8 mb-8 flex-wrap">
-        <input type="text" id="adminMgrSearch" class="search-box m-0 flex-1" placeholder="搜索管理员（登录名/显示名）..." aria-label="搜索管理员">
+        <input type="text" id="adminMgrSearch" class="search-box m-0 flex-1" placeholder="搜索管理员（登录名/显示名）…" aria-label="搜索管理员">
         <select id="adminMgrRoleFilter" class="search-box m-0 admin-filter-sm" aria-label="按角色筛选管理员">
           <option value="">全部角色</option>
           <option value="super_admin">超级管理员</option>
@@ -1295,7 +1295,7 @@
           <!-- 系统 VRChat 账号 -->
           <section class="admin-panel d-none" data-panel="vrc">
           <div class="card p-16 mt-16" id="adminVrcSection"><div class="admin-card-header"><span class="admin-section-icon">🎮</span><h3 data-i18n="admin.vrc">系统 VRChat 账号</h3></div>
-      <div id="systemVrcStatus"><p>检查中...</p></div>
+      <div id="systemVrcStatus"><p>检查中…</p></div>
       <div id="systemVrcActions"></div>
       <div id="systemVrcLoginForm" class="d-none"><input type="text" id="sysVrcUser" placeholder="VRChat 用户名" data-i18n-placeholder="admin.vrc_user_placeholder" class="search-box" aria-label="VRChat 用户名"><input type="password" id="sysVrcPass" placeholder="密码" data-i18n-placeholder="admin.vrc_pwd_placeholder" class="search-box mt-4" aria-label="VRChat 密码"><button type="button" id="sysVrcLoginBtn" class="btn btn-accent btn-sm mt-4" data-i18n="auth.login_btn">登录</button></div>
       <div id="systemVrc2faForm" class="d-none">
@@ -1339,7 +1339,7 @@
         <button type="button" class="btn btn-sm btn-outline" data-vrc-action="blacklist-sync" data-i18n="admin_vrc.bl_sync_btn">🔁 同步群黑名单</button>
         <button type="button" class="btn btn-sm btn-outline" data-vrc-action="blacklist-load" data-i18n="admin_vrc.bl_refresh">🔄 刷新列表</button>
       </div>
-      <input type="search" id="blSearch" placeholder="搜索名字 / ID / 原因..." data-i18n-placeholder="admin_vrc.bl_search_ph" class="search-box mt-8" aria-label="黑名单搜索" style="max-width:720px">
+      <input type="search" id="blSearch" placeholder="搜索名字 / ID / 原因…" data-i18n-placeholder="admin_vrc.bl_search_ph" class="search-box mt-8" aria-label="黑名单搜索" style="max-width:720px">
       <div id="vrcBlacklistList" class="mt-8"></div>
       <div id="vrcBlacklistPagination" class="mt-8 flex-row gap-4 items-center flex-wrap"></div>
     </div>
@@ -1383,7 +1383,7 @@
           <div class="card p-16 mt-16" id="adminPermissionSection"><div class="admin-card-header"><span class="admin-section-icon">🔐</span><h3>用户权限查看</h3></div>
       <p class="text-13 text-muted2 mb-8">只读查看任意用户的「网站用户权限」与「群组用户权限」（VRChat 群组身份）。查看他人需超级管理员。</p>
       <div class="flex-row gap-8 mb-8 flex-wrap">
-        <input type="text" id="permInspectSearch" class="search-box m-0 flex-1" placeholder="搜索用户（登录名/显示名）..." aria-label="搜索用户">
+        <input type="text" id="permInspectSearch" class="search-box m-0 flex-1" placeholder="搜索用户（登录名/显示名）…" aria-label="搜索用户">
         <select id="permInspectUser" class="search-box m-0 admin-filter-sm" aria-label="选择要查看的用户"><option value="">选择用户…</option></select>
       </div>
       <div id="permInspectResult"><div class="text-muted2 text-13">请选择要查看的用户。</div></div>
@@ -1401,7 +1401,7 @@
       </div>
       <div id="permGroupList" class="perm-group-list"></div>
       <div id="permGroupUserMgmt" class="d-none perm-group-user-mgmt">
-        <input type="text" id="pgUserSearch" class="search-box" placeholder="搜索用户..." data-i18n-placeholder="admin.search_user_short_placeholder" aria-label="搜索用户">
+        <input type="text" id="pgUserSearch" class="search-box" placeholder="搜索用户…" data-i18n-placeholder="admin.search_user_short_placeholder" aria-label="搜索用户">
         <div id="permGroupUserList" class="admin-user-list mt-8"></div>
       </div>
     </div>
@@ -1415,7 +1415,7 @@
       <p class="text-13 text-muted2 mb-8" data-i18n="model_coll.admin_desc">查询任意用户的模型收藏，查看收藏状态与失效状态，可编辑 / 删除其全部网站数据中的模型收藏。</p>
       <div id="mcAdminStats" class="mc-admin-stats"></div>
       <div class="flex-row gap-8 mb-8 flex-wrap">
-        <input type="text" id="mcAdminUserSearch" class="search-box m-0 flex-1" placeholder="搜索用户（登录名/显示名）..." data-i18n-placeholder="admin.search_user_placeholder" aria-label="搜索用户">
+        <input type="text" id="mcAdminUserSearch" class="search-box m-0 flex-1" placeholder="搜索用户（登录名/显示名）…" data-i18n-placeholder="admin.search_user_placeholder" aria-label="搜索用户">
         <button type="button" id="mcAdminUserLookupBtn" class="btn btn-accent btn-sm">🔍 <span data-i18n="model_coll.admin_lookup">查询用户</span></button>
         <button type="button" id="mcAdminScanBtn" class="btn btn-sm btn-outline">🔄 <span data-i18n="model_coll.admin_scan">全站失效检测</span></button>
       </div>
@@ -1690,7 +1690,7 @@
           <section class="admin-panel d-none" data-panel="logs">
           <div class="card p-16 mt-16"><div class="admin-card-header"><span class="admin-section-icon">📋</span><h3 data-i18n="admin.log">操作日志</h3></div>
             <div class="flex-row gap-8 mb-8 flex-wrap" id="operLogFilters">
-              <input type="text" id="operLogUserSearch" class="search-box m-0 flex-1 admin-filter-lg" placeholder="按操作者搜索..." data-i18n-placeholder="admin.search_operator_placeholder" aria-label="按操作者搜索日志">
+              <input type="text" id="operLogUserSearch" class="search-box m-0 flex-1 admin-filter-lg" placeholder="按操作者搜索…" data-i18n-placeholder="admin.search_operator_placeholder" aria-label="按操作者搜索日志">
               <select id="operLogTypeFilter" class="search-box m-0 admin-filter-md" aria-label="按类型筛选操作日志">
                 <option value="">全部类型</option>
                 <option value="创建用户">创建用户</option>
@@ -1725,7 +1725,7 @@
                 <option value="live">直播中</option>
                 <option value="ended">已结束</option>
               </select>
-              <input type="text" id="adminLiveSearch" class="search-box m-0 flex-1" placeholder="搜索主播 / 标题..." aria-label="搜索直播">
+              <input type="text" id="adminLiveSearch" class="search-box m-0 flex-1" placeholder="搜索主播 / 标题…" aria-label="搜索直播">
               <button type="button" id="adminLiveRefreshBtn" class="btn btn-sm btn-outline">🔄 刷新</button>
             </div>
             <div id="adminLiveList"></div>
@@ -1744,7 +1744,7 @@
               <button type="button" class="btn btn-sm btn-outline" data-ctab="album">相册</button>
             </div>
             <div class="flex-row gap-8 mb-8 flex-wrap">
-              <input type="text" id="adminContentSearch" class="search-box m-0 flex-1" placeholder="搜索内容..." aria-label="搜索内容">
+              <input type="text" id="adminContentSearch" class="search-box m-0 flex-1" placeholder="搜索内容…" aria-label="搜索内容">
               <button type="button" id="adminContentBatchDelBtn" class="btn btn-sm btn-danger">🗑 批量删除</button>
               <button type="button" id="adminContentRefreshBtn" class="btn btn-sm btn-outline">🔄 刷新</button>
               <button type="button" id="adminContentCreateEventBtn" class="btn btn-sm btn-accent d-none">+ 创建活动</button>
@@ -1764,16 +1764,16 @@
               <div class="admin-form-col-md"><label class="text-13 text-muted2 block mb-2" for="cfgHomeSiteName">站点名称</label><input type="text" id="cfgHomeSiteName" class="search-box admin-form-input-sm" placeholder="境途同游"></div>
               <div class="admin-form-col-md"><label class="text-13 text-muted2 block mb-2" for="cfgSiteSlogan">站点标语</label><input type="text" id="cfgSiteSlogan" class="search-box admin-form-input-sm" placeholder="JingTu Travel"></div>
             </div>
-            <div class="admin-form-col" style="max-width:520px"><label class="text-13 text-muted2 block mb-2" for="cfgSiteWelcome">首页欢迎语</label><textarea id="cfgSiteWelcome" class="search-box admin-form-input" rows="3" placeholder="欢迎来到境途同游..."></textarea></div>
+            <div class="admin-form-col" style="max-width:520px"><label class="text-13 text-muted2 block mb-2" for="cfgSiteWelcome">首页欢迎语</label><textarea id="cfgSiteWelcome" class="search-box admin-form-input" rows="3" placeholder="欢迎来到境途同游…"></textarea></div>
             <button type="button" id="saveSiteInfoBtn" class="btn btn-accent btn-sm mt-4">💾 保存主页信息</button>
           </div>
           <div class="card p-16 mt-16">
             <div class="admin-card-header"><span class="admin-section-icon">🔗</span><h3>社群链接</h3></div>
             <p class="text-13 text-muted2 mb-8">管理页脚与关于页的社群链接（VRChat 群组 / KOOK / Oopz 等）。</p>
             <div class="flex-row gap-8 mb-8 flex-wrap">
-              <div class="admin-form-col"><label class="text-13 text-muted2 block mb-2" for="cfgVrcGroupUrl">VRChat 群组链接</label><input type="url" id="cfgVrcGroupUrl" class="search-box admin-form-input" placeholder="https://vrchat.com/groups/..."></div>
-              <div class="admin-form-col"><label class="text-13 text-muted2 block mb-2" for="cfgKookUrl">KOOK 链接</label><input type="url" id="cfgKookUrl" class="search-box admin-form-input" placeholder="https://kook.top/..."></div>
-              <div class="admin-form-col"><label class="text-13 text-muted2 block mb-2" for="cfgOopzUrl">Oopz 链接</label><input type="url" id="cfgOopzUrl" class="search-box admin-form-input" placeholder="https://oopz.com/..."></div>
+              <div class="admin-form-col"><label class="text-13 text-muted2 block mb-2" for="cfgVrcGroupUrl">VRChat 群组链接</label><input type="url" id="cfgVrcGroupUrl" class="search-box admin-form-input" placeholder="https://vrchat.com/groups/…"></div>
+              <div class="admin-form-col"><label class="text-13 text-muted2 block mb-2" for="cfgKookUrl">KOOK 链接</label><input type="url" id="cfgKookUrl" class="search-box admin-form-input" placeholder="https://kook.top/…"></div>
+              <div class="admin-form-col"><label class="text-13 text-muted2 block mb-2" for="cfgOopzUrl">Oopz 链接</label><input type="url" id="cfgOopzUrl" class="search-box admin-form-input" placeholder="https://oopz.com/…"></div>
             </div>
             <button type="button" id="saveSiteLinksBtn" class="btn btn-accent btn-sm mt-4">💾 保存链接</button>
           </div>
@@ -1811,7 +1811,7 @@
           <div class="card p-16 mt-16">
             <div class="admin-card-header"><span class="admin-section-icon">📡</span><h3>VRC 状态监控</h3></div>
             <p class="text-13 text-muted2 mb-8">实时监控系统 VRChat 账号在线状态、好友规模与接口健康度。</p>
-            <div id="vrcMonitorStatus"><p>加载中...</p></div>
+            <div id="vrcMonitorStatus"><p>加载中…</p></div>
             <div id="vrcMonitorDetail" class="mt-8"></div>
           </div>
           </section>
@@ -1823,13 +1823,13 @@
               <p class="text-13 text-muted2 mb-8">按用户或批量导出/导入用户数据（标签、备注、关注、收藏、分组等），用于备份与还原。复用个人资料页 F-4 导出逻辑。</p>
 
               <div class="flex-row gap-8 mb-8 flex-wrap">
-                <input type="text" id="ubUserIdInput" class="search-box m-0" placeholder="输入用户 ID（数字）..." aria-label="按用户 ID 操作">
+                <input type="text" id="ubUserIdInput" class="search-box m-0" placeholder="输入用户 ID（数字）…" aria-label="按用户 ID 操作">
                 <button type="button" id="ubExportUserBtn" class="btn btn-accent btn-sm">⬇️ 导出该用户</button>
                 <button type="button" id="ubImportUserBtn" class="btn btn-sm btn-outline">⬆️ 导入该用户</button>
               </div>
 
               <div class="flex-row gap-8 mb-8 flex-wrap">
-                <input type="text" id="ubBatchIdsInput" class="search-box m-0 flex-1" placeholder="批量导出：输入多个用户 ID，用逗号分隔，如 1,2,3..." aria-label="批量导出用户 ID">
+                <input type="text" id="ubBatchIdsInput" class="search-box m-0 flex-1" placeholder="批量导出：输入多个用户 ID，用逗号分隔，如 1,2,3…" aria-label="批量导出用户 ID">
                 <button type="button" id="ubBatchExportBtn" class="btn btn-accent btn-sm">⬇️ 批量导出</button>
               </div>
 
@@ -1851,7 +1851,7 @@
                 <button type="button" id="sysBackupCreateBtn" class="btn btn-accent btn-sm" data-i18n="admin.create_backup">⬆️ 创建备份</button>
                 <button type="button" id="sysBackupRefreshBtn" class="btn btn-sm btn-outline">🔄 <span data-i18n="ui.refresh">刷新</span></button>
               </div>
-              <div id="backupList"><p class="text-muted2">加载中...</p></div>
+              <div id="backupList"><p class="text-muted2">加载中…</p></div>
             </div>
           </section>
 
@@ -1862,7 +1862,7 @@
               <p class="text-13 text-muted2 mb-8">管理站点 uploads 上传目录下的文件（列表 / 下载 / 重命名 / 删除 / 清理过期）。</p>
               <div class="admin-dashboard mb-8" id="adminFilesStats"></div>
               <div class="flex-row gap-8 mb-8 flex-wrap">
-                <input type="text" id="adminFilesSearch" class="search-box m-0 flex-1" placeholder="按名称筛选文件..." aria-label="按名称筛选文件">
+                <input type="text" id="adminFilesSearch" class="search-box m-0 flex-1" placeholder="按名称筛选文件…" aria-label="按名称筛选文件">
                 <input type="number" id="adminFilesCleanupDays" class="search-box m-0" style="width:170px" min="0" max="3650" value="30" placeholder="清理天数(0-3650)" aria-label="清理过期文件天数">
                 <button type="button" id="adminFilesCleanupBtn" class="btn btn-sm btn-danger">🧹 清理过期文件</button>
                 <button type="button" id="adminFilesCreateDirBtn" class="btn btn-sm btn-outline">📂 新建目录</button>
@@ -1897,7 +1897,7 @@
               <div id="adminWebhookForm" class="d-none card p-16 mb-8">
                 <div class="admin-card-header"><span class="admin-section-icon">➕</span><h3 id="whFormTitle">新增 Webhook</h3></div>
                 <div class="flex-row gap-8 mb-8 flex-wrap">
-                  <input type="url" id="whUrl" class="search-box m-0 flex-1" placeholder="Webhook URL（https://...）" aria-label="Webhook URL">
+                  <input type="url" id="whUrl" class="search-box m-0 flex-1" placeholder="Webhook URL（https://…）" aria-label="Webhook URL">
                   <input type="password" id="whSecret" class="search-box m-0" style="width:220px" placeholder="签名密钥（可选）" aria-label="签名密钥">
                 </div>
                 <div id="whEventBox" class="mb-8"></div>
@@ -2040,13 +2040,13 @@
 
     <div class="card p-16 mt-12" id="secMotto">
       <h3>✏️ <span data-i18n="profile.section_motto">个性签名</span></h3>
-      <input type="text" id="meMotto" class="form-input" placeholder="一句话描述自己..." maxlength="100" data-i18n-placeholder="profile.motto_placeholder" aria-label="个性签名" data-i18n-aria="profile.section_motto">
+      <input type="text" id="meMotto" class="form-input" placeholder="一句话描述自己…" maxlength="100" data-i18n-placeholder="profile.motto_placeholder" aria-label="个性签名" data-i18n-aria="profile.section_motto">
       <button type="button" id="saveMottoBtn" class="btn btn-accent btn-sm mt-4" data-i18n="common.save">保存</button>
     </div>
 
     <div class="card p-16 mt-12" id="secBio">
       <h3>📝 <span data-i18n="profile.section_bio">个人简介</span></h3>
-      <textarea id="meBio" class="form-input" rows="4" maxlength="2000" placeholder="介绍一下自己..." data-i18n-placeholder="profile.bio_placeholder" aria-label="个人简介" data-i18n-aria="profile.section_bio"></textarea>
+      <textarea id="meBio" class="form-input" rows="4" maxlength="2000" placeholder="介绍一下自己…" data-i18n-placeholder="profile.bio_placeholder" aria-label="个人简介" data-i18n-aria="profile.section_bio"></textarea>
       <div class="text-right text-12 text-muted2"><span id="meBioCount">0</span>/2000</div>
       <button type="button" id="saveBioBtn" class="btn btn-accent btn-sm mt-4" data-i18n="common.save">保存</button>
     </div>
@@ -2104,12 +2104,12 @@
 
     <div class="card p-16 mt-12" id="secEvents">
       <h3><span data-i18n="profile.my_events">我的活动</span> <span id="meEventsCount" class="text-muted2 text-12"></span></h3>
-      <div id="meEventsList"><p class="text-muted2" data-i18n="loading_ellipsis">正在加载...</p></div>
+      <div id="meEventsList"><p class="text-muted2" data-i18n="loading_ellipsis">正在加载…</p></div>
     </div>
 
     <div class="card p-16 mt-12" id="secVrc">
       <h3 data-i18n="profile.vrc_bind">VRChat 账号</h3>
-      <div id="vrchatStatus"><p data-i18n="init.checking">检查中...</p></div>
+      <div id="vrchatStatus"><p data-i18n="init.checking">检查中…</p></div>
       <div id="vrchatBindForm" class="d-none mt-8">
         <input type="text" id="vrchatInputId" class="form-input" placeholder="VRChat 用户名" data-i18n-placeholder="login.vrc_user_placeholder" aria-label="VRChat 用户名">
         <input type="password" id="vrchatBindPwd" class="form-input mt-4" placeholder="密码" data-i18n-placeholder="login.vrc_pwd_placeholder" aria-label="VRChat 密码">
@@ -2165,7 +2165,7 @@
 
     <div class="card p-16 mt-12" id="totpSettingsCard">
       <h3 data-i18n="totp.title">两步验证 (TOTP)</h3>
-      <div id="totpStatus" class="text-13 text-muted2">检查中...</div>
+      <div id="totpStatus" class="text-13 text-muted2">检查中…</div>
       <div class="d-none" id="totpSetupArea">
         <p class="text-13 text-muted2 mt-8" data-i18n="totp.setup_hint">使用身份验证器 App（如 Google Authenticator / Microsoft Authenticator）扫描下方二维码，或手动输入密钥后，输入 6 位验证码完成绑定。</p>
         <div class="mt-8">
@@ -2286,7 +2286,7 @@
   <div class="modal-content">
     <div class="modal-header"><h3 id="annModalTitle">📢 发布公告</h3><button type="button" id="annModalCloseBtn" class="modal-close" data-i18n-aria="ui.close" aria-label="关闭">✕</button></div>
     <div class="form-group"><label for="annTitle" data-i18n="modal.field_title">标题</label><input type="text" id="annTitle" class="form-input" data-i18n-placeholder="modal.ann_title_ph" placeholder="公告标题"></div>
-    <div class="form-group"><label for="annContent" data-i18n="modal.field_content">内容</label><textarea id="annContent" class="form-input" rows="6" data-i18n-placeholder="modal.ann_content_ph" placeholder="公告内容..."></textarea></div>
+    <div class="form-group"><label for="annContent" data-i18n="modal.field_content">内容</label><textarea id="annContent" class="form-input" rows="6" data-i18n-placeholder="modal.ann_content_ph" placeholder="公告内容…"></textarea></div>
     <div class="form-group"><label><input type="checkbox" id="annPinned"> <span data-i18n="modal.ann_pinned">置顶公告</span></label></div>
     <div class="form-group"><label for="annVisibility" data-i18n="modal.visibility">可见性</label><select id="annVisibility" class="form-input"><option value="members_only" data-i18n="modal.members_only_opt">成员专属</option><option value="public" data-i18n="modal.public_opt">公开</option></select></div>
     <div class="form-actions"><button type="button" id="annCancelBtn" class="btn btn-outline" data-modal-close="announceModal" data-i18n="ui.cancel">取消</button><button type="button" id="annSaveBtn" class="btn btn-accent" data-i18n="announcements.publish_btn">发布</button></div>
@@ -2302,7 +2302,7 @@
     <div class="form-group"><label for="evtTime" data-i18n="modal.evt_time_label">活动时间</label><input type="datetime-local" id="evtTime" class="form-input"></div>
     <div class="form-group"><label for="evtEndsAt" data-i18n="modal.evt_end_label">结束时间（选填）</label><input type="datetime-local" id="evtEndsAt" class="form-input"></div>
     <div class="form-group"><label for="evtPlace" data-i18n="modal.evt_place_label">地点（选填）</label><input type="text" id="evtPlace" class="form-input" data-i18n-placeholder="modal.evt_place_ph" placeholder="活动地点"></div>
-    <div class="form-group"><label for="evtDesc" data-i18n="modal.evt_desc_label">描述</label><textarea id="evtDesc" class="form-input" rows="4" data-i18n-placeholder="modal.evt_desc_ph" placeholder="活动描述..."></textarea></div>
+    <div class="form-group"><label for="evtDesc" data-i18n="modal.evt_desc_label">描述</label><textarea id="evtDesc" class="form-input" rows="4" data-i18n-placeholder="modal.evt_desc_ph" placeholder="活动描述…"></textarea></div>
     <div class="form-group"><label for="evtMax" data-i18n="modal.evt_max_label">人数上限</label><input type="number" id="evtMax" class="form-input" data-i18n-placeholder="modal.evt_max_ph" placeholder="0 = 不限" min="0"></div>
     <div class="form-group"><label for="evtVisibility" data-i18n="modal.visibility">可见性</label><select id="evtVisibility" class="form-input"><option value="members_only" data-i18n="modal.members_only_opt">成员专属</option><option value="public" data-i18n="modal.public_opt">公开</option></select></div>
     <div class="form-actions"><button type="button" id="evtModalCancelBtn" class="btn btn-outline" data-modal-close="eventModal" data-i18n="ui.cancel">取消</button><button type="button" id="evtModalSaveBtn" class="btn btn-accent" data-i18n="admin.create">创建</button></div>
@@ -2313,7 +2313,7 @@
 <!-- World 搜索 -->
 <div id="worldSearchModal" class="modal">
   <div class="modal-content modal-sm"><div class="modal-header"><h3 data-i18n="modal.world_search_title">搜索 VRChat World</h3><button type="button" id="worldSearchCloseBtn" class="modal-close" data-i18n-aria="ui.close" aria-label="关闭">&times;</button></div>
-    <div class="form-group"><input type="text" id="worldSearchInput" class="form-input" data-i18n-placeholder="modal.search_kw_ph" placeholder="输入关键词搜索..." data-i18n-aria="modal.world_search_aria" aria-label="搜索 World"></div>
+    <div class="form-group"><input type="text" id="worldSearchInput" class="form-input" data-i18n-placeholder="modal.search_kw_ph" placeholder="输入关键词搜索…" data-i18n-aria="modal.world_search_aria" aria-label="搜索 World"></div>
     <div id="worldSearchResults" class="world-search-results"></div>
   </div>
 </div>
@@ -2321,7 +2321,7 @@
 <!-- Avatar 搜索 -->
 <div id="avatarSearchModal" class="modal">
   <div class="modal-content modal-sm"><div class="modal-header"><h3 data-i18n="modal.avatar_search_title">搜索 VRChat Avatar</h3><button type="button" id="avatarSearchCloseBtn" class="modal-close" data-i18n-aria="ui.close" aria-label="关闭">&times;</button></div>
-    <div class="form-group"><input type="text" id="avatarSearchInput" class="form-input" data-i18n-placeholder="modal.search_kw_ph" placeholder="输入关键词搜索..." data-i18n-aria="modal.avatar_search_aria" aria-label="搜索 Avatar"></div>
+    <div class="form-group"><input type="text" id="avatarSearchInput" class="form-input" data-i18n-placeholder="modal.search_kw_ph" placeholder="输入关键词搜索…" data-i18n-aria="modal.avatar_search_aria" aria-label="搜索 Avatar"></div>
     <div id="avatarSearchResults" class="world-search-results"></div>
   </div>
 </div>
@@ -2372,7 +2372,7 @@
 <!-- 登录历史（S-6） -->
 <div id="loginHistoryModal" class="modal">
   <div class="modal-content modal-lg"><div class="modal-header"><h3 data-i18n="admin_users.login_history_title">登录历史</h3><button type="button" class="modal-close" data-modal-close="loginHistoryModal" data-i18n-aria="ui.close" aria-label="关闭">✕</button></div>
-    <div id="loginHistoryList" class="text-13" style="max-height:60vh;overflow:auto;line-height:1.6"><p class="text-muted2" data-i18n="loading_ellipsis">正在加载...</p></div>
+    <div id="loginHistoryList" class="text-13" style="max-height:60vh;overflow:auto;line-height:1.6"><p class="text-muted2" data-i18n="loading_ellipsis">正在加载…</p></div>
   </div>
 </div>
 
@@ -2486,7 +2486,7 @@
       <div class="form-group flex-1"><label for="bdayTime" data-i18n="modal.bday_start_label">开始时间</label><input type="datetime-local" id="bdayTime" class="form-input"></div>
       <div class="form-group flex-1"><label for="bdayEndsAt" data-i18n="modal.bday_end_label">结束时间</label><input type="datetime-local" id="bdayEndsAt" class="form-input"></div>
     </div>
-    <div class="form-group"><label for="bdayDesc" data-i18n="modal.bday_desc_label">描述（选填）</label><textarea id="bdayDesc" class="form-input" rows="3" data-i18n-placeholder="modal.bday_desc_ph" placeholder="派对描述..."></textarea></div>
+    <div class="form-group"><label for="bdayDesc" data-i18n="modal.bday_desc_label">描述（选填）</label><textarea id="bdayDesc" class="form-input" rows="3" data-i18n-placeholder="modal.bday_desc_ph" placeholder="派对描述…"></textarea></div>
     <div class="form-row gap-8">
       <div class="form-group flex-1"><label for="bdayMax" data-i18n="modal.bday_max_label">最大参与人数</label><input type="number" id="bdayMax" class="form-input" value="30" min="0"></div>
       <div class="form-group flex-1">
@@ -2560,7 +2560,7 @@
     <div id="evtDetComments" class="evt-det-comments mt-12">
       <h4 data-i18n="modal.evt_comments_heading">评论</h4>
       <div id="evtDetCommentList"></div>
-      <div class="evt-det-comment-input"><textarea id="evtDetCommentInput" class="form-input" rows="2" data-i18n-placeholder="events.write_comment" placeholder="写下你的评论..." data-i18n-aria="modal.evt_comment_aria"></textarea><button type="button" id="evtDetCommentSendBtn" class="btn btn-accent btn-sm mt-4" data-i18n="chat.send">发送</button></div>
+      <div class="evt-det-comment-input"><textarea id="evtDetCommentInput" class="form-input" rows="2" data-i18n-placeholder="events.write_comment" placeholder="写下你的评论…" data-i18n-aria="modal.evt_comment_aria"></textarea><button type="button" id="evtDetCommentSendBtn" class="btn btn-accent btn-sm mt-4" data-i18n="chat.send">发送</button></div>
     </div>
   </div>
 </div>
@@ -2680,7 +2680,7 @@
     <div id="dataImportPane" class="data-pane d-none">
       <div class="form-group">
         <label for="dataImportText" data-i18n="modal.import_label">粘贴导出的 JSON 数据</label>
-        <textarea id="dataImportText" class="form-input" rows="12" data-i18n-placeholder="modal.import_ph" placeholder='粘贴之前导出的 JSON 备份内容（如 {"tags":[...],"notes":[...],...}）'></textarea>
+        <textarea id="dataImportText" class="form-input" rows="12" data-i18n-placeholder="modal.import_ph" placeholder='粘贴之前导出的 JSON 备份内容（如 {"tags":[…],"notes":[…],…}）'></textarea>
       </div>
       <div class="text-12 text-muted2 mt-4" data-i18n="modal.import_merge_desc">导入将合并到现有数据（标签/收藏/分组按唯一键去重，不会覆盖已有内容）。</div>
       <div class="form-actions">
@@ -2713,7 +2713,7 @@
 
 <!-- ===== Lightbox ===== -->
 <div class="lightbox" id="lightbox">
-  <button type="button" id="lightboxCloseBtn" class="lightbox-close" data-i18n-aria="lightbox.close_aria">✕</button>
+  <button type="button" id="lightboxCloseBtn" class="lightbox-close" aria-label="关闭图片预览" data-i18n-aria="lightbox.close_aria">✕</button>
   <div class="lightbox-img-area">
     <div id="lightboxImgContainer">
       <!-- 静态占位：不带 src 避免空 src 误请求当前页面；打开相册时由 album.js 整段替换 -->
@@ -2722,8 +2722,8 @@
     <div id="lbCounter" class="lightbox-counter">1/1</div>
     <div id="lbDesc" class="lightbox-desc"></div>
     <button type="button" id="lbSlideBtn" class="lightbox-slide-btn" data-i18n="lightbox.slide_btn">幻灯片</button>
-    <button type="button" id="lbPrevBtn" class="lightbox-nav lightbox-prev" data-i18n-aria="ui.prev_image">‹</button>
-    <button type="button" id="lbNextBtn" class="lightbox-nav lightbox-next" data-i18n-aria="ui.next_image">›</button>
+    <button type="button" id="lbPrevBtn" class="lightbox-nav lightbox-prev" aria-label="上一张" data-i18n-aria="ui.prev_image">‹</button>
+    <button type="button" id="lbNextBtn" class="lightbox-nav lightbox-next" aria-label="下一张" data-i18n-aria="ui.next_image">›</button>
     <div id="lbThumbs" class="lightbox-thumbs"></div>
   </div>
   <div class="lightbox-actions">
@@ -2734,7 +2734,7 @@
   </div>
   <div class="lightbox-comments">
     <div id="lbComments" class="lightbox-comments-list"></div>
-    <div class="lightbox-comment-input"><textarea id="commentInput" data-i18n-placeholder="lightbox.comment_ph" placeholder="写下评论..." data-i18n-aria="lightbox.comment_aria"></textarea><button type="button" id="lbCommentSendBtn" class="btn btn-accent btn-sm" data-i18n="chat.send">发送</button></div>
+    <div class="lightbox-comment-input"><textarea id="commentInput" data-i18n-placeholder="lightbox.comment_ph" placeholder="写下评论…" data-i18n-aria="lightbox.comment_aria"></textarea><button type="button" id="lbCommentSendBtn" class="btn btn-accent btn-sm" data-i18n="chat.send">发送</button></div>
   </div>
 </div>
 
@@ -2779,33 +2779,33 @@
 <!-- ===== Scripts ===== -->
 <!-- 核心基础设施：defer 后与其余模块同批次按文档顺序执行（core 仍在最前），
      移出解析阻塞路径，首屏可先完成首次绘制（P2-21） -->
-<script defer src="/js/core.js?v=20261026d"></script>
+<script defer src="/js/core.js?v=20261122c"></script>
 <!-- i18n.js 必须早于 ui.js / nav-scroller.js：二者在脚本顶层立即调用 __()，若 i18n 尚未就绪会抛 "ReferenceError: __ is not defined" 并中断后续 const 初始化（连锁引发 _modalStack TDZ） -->
-<script defer src="/js/i18n.js?v=20261026d"></script>
-<script defer src="/js/ui.js?v=20261026d"></script>
-<script defer src="/vendor/gsap/gsap.min.js?v=20261026d"></script>
-<script defer src="/vendor/gsap/ScrollTrigger.min.js?v=20261026d"></script>
-<script defer src="/js/motion.js?v=20261026d"></script>
-<script defer src="/js/reveal.js?v=20261026d"></script>
-<script defer src="/js/nav-scroller.js?v=20261026d"></script>
+<script defer src="/js/i18n.js?v=20261122c"></script>
+<script defer src="/js/ui.js?v=20261122c"></script>
+<script defer src="/vendor/gsap/gsap.min.js?v=20261122c"></script>
+<script defer src="/vendor/gsap/ScrollTrigger.min.js?v=20261122c"></script>
+<script defer src="/js/motion.js?v=20261122c"></script>
+<script defer src="/js/reveal.js?v=20261122c"></script>
+<script defer src="/js/nav-scroller.js?v=20261122c"></script>
 <!-- 页面空闲冻结/解冻核心（freeze.js）：必须早于所有注册冻结回调的模块
      （theme/auth/main 及懒加载路由模块），保证它们顶层注册时 window.__freeze 已就绪 -->
-<script defer src="/js/freeze.js?v=20261026d"></script>
-<script defer src="/js/theme.js?v=20261026d"></script>
-<script defer src="/js/auth.js?v=20261026d"></script>
+<script defer src="/js/freeze.js?v=20261122c"></script>
+<script defer src="/js/theme.js?v=20261122c"></script>
+<script defer src="/js/auth.js?v=20261122c"></script>
 <!-- VRChat 收藏同步状态栏（vrc_sync.js）：登录/访问站点时自动把官方收藏快照同步到本地库，
      顶部状态条显示进度；群组同步/在线状态刷新也复用它透出。 -->
-<script defer src="/js/vrc_sync.js?v=20261026d"></script>
+<script defer src="/js/vrc_sync.js?v=20261122c"></script>
 <!-- 路由模块懒加载器：包裹 switchTab，按需 / 空闲预载（见 loader.js）。
      当前语言包由 <head> 内联引导按偏好注入，其余语言包在切换时按需加载。 -->
-<script defer src="/js/loader.js?v=20261026d"></script>
+<script defer src="/js/loader.js?v=20261122c"></script>
 <!-- 全局命令面板（VN-9，VRCNext SmartSearch 借鉴）：依赖 core.js 的 api/esc 等 -->
-<script defer src="/js/smartsearch.js?v=20261026d"></script>
+<script defer src="/js/smartsearch.js?v=20261122c"></script>
 <!-- 引导启动：调用 initI18n / switchTab，必须在 loader.js 之后 -->
-<script defer src="/js/init.js?v=20261026d"></script>
-<script defer src="/js/main.js?v=20261026d"></script>
+<script defer src="/js/init.js?v=20261122c"></script>
+<script defer src="/js/main.js?v=20261122c"></script>
 <!-- 反馈/建议悬浮按钮 -->
-<script defer src="/js/feedback.js?v=20261026d"></script>
+<script defer src="/js/feedback.js?v=20261122c"></script>
 
 <!-- ===== Event Bindings (migrated from inline handlers) ===== -->
 <script>

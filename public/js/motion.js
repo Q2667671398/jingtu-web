@@ -23,9 +23,10 @@
   }
   window.__motionGSAPEnabled = true;
 
-  // 需要滚动揭示的元素选择器（覆盖 reveal.js 原目标 + 通用卡片）
-  var REVEAL_SEL = '.list-item,.timeline-item,.chart-bar,.rank-item,' +
-    '.card,.post-card,.event-card,.album-card,.member-card,[data-animate]';
+  // 滚动揭示只用于数据可视化/装饰元素；正文卡片（post/event/album/member/card）
+  // 不做 scroll-reveal——逐条淡入正文是用户抱怨最多的动效，且拖慢阅读与滚动感知。
+  // 需要揭示的内容请显式加 [data-animate]。
+  var REVEAL_SEL = '.list-item,.timeline-item,.chart-bar,.rank-item,[data-animate]';
 
   function mark(el, name) { try { el.setAttribute('data-' + name, '1'); } catch (e) {} }
   function marked(el, name) { return el.getAttribute('data-' + name) === '1'; }

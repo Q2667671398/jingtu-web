@@ -303,10 +303,13 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root:not(.force-anim) {
-    --transition-fast: 0s;
-    --transition: 0s;
-    --transition-time: 0s;
-    --transition-time-slow: 0s;
-    --transition-slow: 0s;
+    /* 用 0.01ms 而非 0：0 会让浏览器跳过 transitionend/animationend，
+       依赖这些事件的 JS 状态机（如 toast 移除、动画类清理）可能挂起。
+       0.01ms 视觉上等同瞬时，但事件照常触发。 */
+    --transition-fast: 0.01ms;
+    --transition: 0.01ms;
+    --transition-time: 0.01ms;
+    --transition-time-slow: 0.01ms;
+    --transition-slow: 0.01ms;
   }
 }

@@ -1243,8 +1243,9 @@ function renderEventTeams(eventId) {
   }
   container.innerHTML = '<div class="event-teams-list">' + teams.map(t => {
     const members = t.members || [];
-    const isMember = members.some(m => m.id === currentUser?.id);
-    const isLeader = t.leader_id === currentUser?.id;
+    // 后端 event_teams.js 成员对象字段是 user_id（非 id），且 UID 前后端类型可能不一致，统一用 String 比较。
+    const isMember = members.some(m => String(m.user_id) === String(currentUser?.id));
+    const isLeader = String(t.leader_id) === String(currentUser?.id);
     return `
       <div class="event-team-card">
         <div class="event-team-header">
@@ -1256,7 +1257,7 @@ function renderEventTeams(eventId) {
             <div class="event-team-member">
               <img src="${esc(m.avatarUrl || '/api/avatar/default')}" class="event-team-avatar" alt="" data-avatar-fail-src="${escAttr(m.avatarUrl || '/api/avatar/default')}" loading="lazy"/>
               <span>${esc(m.display_name)}</span>
-              ${m.id === t.leader_id ? '<span class="event-team-leader-badge">' + __('teams.leader') + '</span>' : ''}
+              ${String(m.user_id) === String(t.leader_id) ? '<span class="event-team-leader-badge">' + __('teams.leader') + '</span>' : ''}
             </div>
           `).join('')}
         </div>
