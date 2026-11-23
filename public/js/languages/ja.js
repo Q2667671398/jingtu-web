@@ -245,6 +245,7 @@ window._LANG_JA = {
   "files.search_ph": "ファイル名を検索…",
   "files.all": "すべて",
   "files.manage_cats": "カテゴリ管理",
+  "files.storage_mgr": "ストレージ管理",
   "files.upload": "ファイルをアップロード",
   "files.download": "ダウンロード",
   "files.empty": "ファイルはまだありません",

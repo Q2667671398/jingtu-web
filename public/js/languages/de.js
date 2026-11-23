@@ -245,6 +245,7 @@ window._LANG_DE = {
   "files.search_ph": "Dateien suchen…",
   "files.all": "Alle",
   "files.manage_cats": "Kategorien",
+  "files.storage_mgr": "Speicher",
   "files.upload": "Datei hochladen",
   "files.download": "Herunterladen",
   "files.empty": "Noch keine Dateien",

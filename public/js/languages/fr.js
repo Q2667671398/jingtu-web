@@ -245,6 +245,7 @@ window._LANG_FR = {
   "files.search_ph": "Rechercher…",
   "files.all": "Tous",
   "files.manage_cats": "Gérer les catégories",
+  "files.storage_mgr": "Stockage",
   "files.upload": "Téléverser",
   "files.download": "Télécharger",
   "files.empty": "Aucun fichier",

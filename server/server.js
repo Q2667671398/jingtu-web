@@ -376,6 +376,21 @@ app.use('/assets', express.static(PUBLIC_ASSETS_DIR, {
     }
   }
 }));
+// 静态资源防泄漏：public/ 下不应对外暴露的「内部临时产物」（下划线开头的分析脚本/报告等）
+// 与明显非前端资源（.py/.txt/.log/.bak 等）一律 404，避免误把调试文件留在 public/ 时被下载。
+app.use((req, res, next) => {
+  let p = req.path || '';
+  try { p = decodeURIComponent(p); } catch (e) { /* 非法编码交后续处理 */ }
+  const segs = p.split('/').filter(Boolean);
+  const lastSeg = segs.length ? segs[segs.length - 1] : '';
+  const looksInternal = segs.some(s => s.startsWith('_') && s !== '_next');
+  const badExt = /\.(py|txt|log|bak|sql|sh|ps1|bat|env|ini|md)$/i.test(lastSeg);
+  if (looksInternal || badExt) {
+    return res.status(404).type('text/plain').send('Not Found');
+  }
+  next();
+});
+
 app.use(express.static(path.join(ROOT_DIR, 'public'), {
   maxAge: 0,
   etag: true,

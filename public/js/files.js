@@ -373,6 +373,15 @@
       renderCatMgr();
       showModal('fileCatModal');
     });
+    // 管理员：跳到后台「文件存放管理」（uploads 目录运维）
+    const storageBtn = document.getElementById('filesStorageBtn');
+    if (storageBtn) storageBtn.addEventListener('click', () => {
+      if (typeof window.switchTab === 'function') window.switchTab('admin', true);
+      setTimeout(() => {
+        const nav = document.querySelector('.admin-nav-item[data-target="files"]');
+        if (nav) nav.click();
+      }, 400);
+    });
     const prev = document.getElementById('filesPrev');
     if (prev) prev.addEventListener('click', () => loadFiles(_filesState.page - 1));
     const next = document.getElementById('filesNext');

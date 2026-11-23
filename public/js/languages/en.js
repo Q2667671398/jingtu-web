@@ -201,6 +201,7 @@ window._LANG_EN = {
   "files.search_ph": "Search files…",
   "files.all": "All",
   "files.manage_cats": "Manage categories",
+  "files.storage_mgr": "Storage",
   "files.upload": "Upload file",
   "files.download": "Download",
   "files.empty": "No files yet",

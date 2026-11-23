@@ -205,6 +205,7 @@ window._LANG_RU = {
   "files.search_ph": "Поиск файлов…",
   "files.all": "Все",
   "files.manage_cats": "Управление категориями",
+  "files.storage_mgr": "Хранилище",
   "files.upload": "Загрузить файл",
   "files.download": "Скачать",
   "files.empty": "Файлов пока нет",

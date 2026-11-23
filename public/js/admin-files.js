@@ -159,6 +159,11 @@
     if (createBtn) createBtn.addEventListener('click', createDir);
     const cleanupBtn = document.getElementById('adminFilesCleanupBtn');
     if (cleanupBtn) cleanupBtn.addEventListener('click', cleanupFiles);
+    // 两个文件入口互相打通：跳「群组文件」（面向成员的下载库）
+    const gotoGroupFiles = document.getElementById('adminGotoGroupFiles');
+    if (gotoGroupFiles) gotoGroupFiles.addEventListener('click', () => {
+      if (typeof window.switchTab === 'function') window.switchTab('files', true);
+    });
     const search = document.getElementById('adminFilesSearch');
     if (search) search.addEventListener('input', (e) => {
       filesKeyword = (e.target.value || '').trim().toLowerCase();

@@ -246,6 +246,7 @@ window._LANG_ZH = {
   "files.search_ph": "搜索文件名…",
   "files.all": "全部",
   "files.manage_cats": "管理分类",
+  "files.storage_mgr": "存储管理",
   "files.upload": "上传文件",
   "files.download": "下载",
   "files.empty": "暂无文件",
