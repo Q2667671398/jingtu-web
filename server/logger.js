@@ -160,6 +160,10 @@ const formatMessage = (level, tag, message, ...args) => {
 };
 
 const flushBuffer = async () => {
+  // 测试环境不落盘：测试会故意 mock 各种失败（如 pool burst / db down），
+  // 若写入 logs/*-dev.log 会污染开发日志，让运维误判为真实生产错误。
+  // 测试期间日志只走 console，由 jest 自行收集。
+  if (NODE_ENV === 'test') { logBuffer.length = 0; return; }
   if (isFlushing || logBuffer.length === 0) return;
   
   isFlushing = true;

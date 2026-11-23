@@ -414,6 +414,7 @@ async function initDatabase() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uk_vrc_world(vrchat_id, world_id),
         INDEX idx_vrchat_id(vrchat_id),
+        INDEX idx_world_id(world_id),
         INDEX idx_time(created_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
@@ -1622,6 +1623,21 @@ async function initDatabase() {
       }
     } catch (e) {
       logger.warn('db-init', '  ⚠️ user_profile backfill:', e.message);
+    }
+
+    // 性能补索引：老库的 world_visit_log 只有 (vrchat_id, world_id) 复合唯一键，
+    // 而「世界热度排行」按 world_id 单独 GROUP BY → 复合索引第一列不是 world_id 用不上，
+    // EXPLAIN 显示 type=ALL + Using temporary/filesort（全表扫描）。补单列索引。
+    // MySQL 5.7 无 ADD INDEX IF NOT EXISTS，用 try/catch 忽略重复键（1061）。
+    try {
+      await holder.pool.query('ALTER TABLE world_visit_log ADD INDEX idx_world_id(world_id)');
+      logger.info('db-init', '  ✓ 迁移: world_visit_log 补索引 idx_world_id');
+    } catch (e) {
+      if (e.errno === 1061 || e.code === 'ER_DUP_KEYNAME') {
+        /* 索引已存在：无需处理 */
+      } else {
+        logger.warn('db-init', '  ⚠️ world_visit_log index migration:', e.message);
+      }
     }
 
     // V6.6: 为 users 表添加安全列（使用 try/catch 兼容 MySQL 5.7）
