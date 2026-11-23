@@ -1,3 +1,18 @@
+/**
+ * 境途同游 — 缓存服务门面（cache-service）
+ *
+ * 对底层 `cache`（内存 Map / Redis 双实现）的统一封装：为成员、活动、动态、相册、
+ * 公告、配置、统计、世界、资料卡、群组名册等实体提供 get/set/invalidate 三件套，
+ * 集中管理 TTL（见 CACHE_TTL）与 key 命名空间（见 cacheKeys），避免散落的裸 cache 调用。
+ *
+ * 主要入口：
+ *  - getX/setX/invalidateX：各实体的读写与失效（invalidate 同时清列表/关联 key）
+ *  - invalidateRelated(type)：按业务类型批量失效关联 key（post/activity/photo/user 等）
+ *  - warmup(getPool)：Redis 启用时预热用户/活动/动态等到缓存
+ *  - getCacheStatus()：缓存健康状态（enabled/keyCount/按前缀分组/redisStats）
+ *
+ * 底层缓存不可用时，cache 模块自身提供内存降级，本门面无需感知。
+ */
 const cache = require('./cache');
 const logger = require('./logger');
 
