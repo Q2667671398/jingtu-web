@@ -2561,6 +2561,7 @@ window._LANG_ZH = {
   "friends.activity_timeline": "在线时间轴",
   "friends.activity_timeline_title": "在线活动时间轴",
   "friends.activity_heatmap_title": "活跃时段分布（星期 × 小时）",
+  "friends.together_time_badge": "共度 {m} 分钟",
   "friends.activity_timeline_empty": "暂无在线活动记录",
   "friends.activity_timeline_total": "近 30 天在线 {minutes} 分钟",
   "friends.activity_timeline_online_now": "当前在线",

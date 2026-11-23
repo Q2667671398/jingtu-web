@@ -528,6 +528,9 @@
       const res = await api('/api/friends/activity-sessions/' + id, { method: 'GET' });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(errText(d))}</div>`; return; }
+      // F-04：并发拉取「共度时间」（失败不影响主时间轴展示）
+      const together = await api('/api/friends/together-time/' + id, { method: 'GET' })
+        .then(r => (r.ok ? r.json() : null)).catch(() => null);
       const items = (d.items || []);
       if (!items.length) {
         if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(__('friends.activity_timeline_empty'))}</div>`;
@@ -539,9 +542,13 @@
       const onlineBadge = d.onlineNow
         ? `<span class="badge badge-success">${esc(__('friends.activity_timeline_online_now'))}</span>`
         : '';
+      // F-04：共度时间徽章（双方在线会话重叠总时长）
+      const togetherBadge = (together && together.totalMinutes > 0)
+        ? `<span class="badge badge-info">${esc((__('friends.together_time_badge') || '共度 {m} 分钟').replace('{m}', together.totalMinutes))}</span>`
+        : '';
       if (body) body.innerHTML = `
         <div class="text-13 text-muted2" style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <span>${esc(summary)}</span>${onlineBadge}
+          <span>${esc(summary)}</span>${onlineBadge}${togetherBadge}
         </div>
         ${renderActivityHeatmap(items)}
         ${items.map(r => {

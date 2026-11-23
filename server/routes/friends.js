@@ -846,6 +846,90 @@ module.exports = function (notificationService) {
     }
   });
 
+  // ==================== F-04 GET /api/friends/together-time/:userId ====================
+  // 计算「我」与指定好友的在线会话重叠总时长（借鉴 VRCNext Stats「共度时间」）。
+  // 数据源 activity_sessions（按 vrchat_id 存会话区间），双指针求两串区间交集。
+  router.get('/together-time/:userId', requireAuth, async (req, res) => {
+    try {
+      const me = req.session.userId;
+      const target = parseInt(req.params.userId);
+      if (!target || isNaN(target) || target === me) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
+      }
+      const days = Math.min(parseInt(req.query.days) || 30, 90);
+      const pool = getPool();
+
+      // 越权校验：仅本人或已接受好友可查（防社交图枚举）
+      const [rel] = await pool.query(
+        `SELECT id FROM user_friends WHERE user_id = ? AND friend_id = ? AND status = 'accepted'`,
+        [me, target]
+      );
+      if (!rel.length) {
+        return sendError(res, 403, ErrorCodes.FORBIDDEN, '无权查看与该用户的共度时间');
+      }
+
+      // 取双方 vrchat_name（会话以 vrchat_id 为键）
+      const [urows] = await pool.query(
+        `SELECT id, vrchat_name FROM users WHERE id IN (?, ?) AND deleted_at IS NULL`, [me, target]
+      );
+      const meRow = urows.find(u => u.id === me);
+      const tRow = urows.find(u => u.id === target);
+      if (!meRow || !meRow.vrchat_name || !tRow || !tRow.vrchat_name) {
+        return res.json({ totalMinutes: 0, sessions: [], myMinutes: 0, theirMinutes: 0, days });
+      }
+
+      const loadSessions = async (vrcid) => {
+        const [rows] = await pool.query(
+          `SELECT started_at, ended_at, duration_minutes, world_name, world_id
+           FROM activity_sessions WHERE vrchat_id = ?
+             AND (started_at >= NOW() - INTERVAL ? DAY OR ended_at IS NULL)
+           ORDER BY started_at ASC LIMIT 1000`,
+          [vrcid, days]
+        );
+        const now = Date.now();
+        return rows.map(r => {
+          const start = new Date(r.started_at).getTime();
+          const end = r.ended_at ? new Date(r.ended_at).getTime() : now;
+          return { start, end, worldName: r.world_name || '', worldId: r.world_id || '' };
+        }).filter(s => s.end > s.start);
+      };
+
+      const [mine, theirs] = await Promise.all([loadSessions(meRow.vrchat_name), loadSessions(tRow.vrchat_name)]);
+      const sumMin = (arr) => Math.round(arr.reduce((s, x) => s + (x.end - x.start), 0) / 60000);
+
+      // 双指针求区间交集（两者均已按 start 升序）
+      const sessions = [];
+      let totalMs = 0, i = 0, j = 0;
+      while (i < mine.length && j < theirs.length) {
+        const s = Math.max(mine[i].start, theirs[j].start);
+        const e = Math.min(mine[i].end, theirs[j].end);
+        if (e > s) {
+          totalMs += (e - s);
+          sessions.push({
+            startedAt: new Date(s).toISOString(),
+            endedAt: new Date(e).toISOString(),
+            minutes: Math.round((e - s) / 60000),
+            worldName: mine[i].worldName || theirs[j].worldName || ''
+          });
+        }
+        if (mine[i].end < theirs[j].end) i++; else j++;
+      }
+      // 重叠明细按时间倒序（最近的在前），最多 50 条
+      sessions.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+
+      res.json({
+        totalMinutes: Math.round(totalMs / 60000),
+        sessions: sessions.slice(0, 50),
+        sessionCount: sessions.length,
+        myMinutes: sumMin(mine),
+        theirMinutes: sumMin(theirs),
+        days
+      });
+    } catch (e) {
+      handleError(res, e, '[friends/together-time]');
+    }
+  });
+
   // 指定好友的共同好友列表（点开详情）
   router.get('/mutuals/:targetUserId', requireAuth, async (req, res) => {
     try {

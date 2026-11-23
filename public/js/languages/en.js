@@ -2530,6 +2530,7 @@ window._LANG_EN = {
   "friends.activity_timeline": "Activity timeline",
   "friends.activity_timeline_title": "Online Activity Timeline",
   "friends.activity_heatmap_title": "Activity by weekday × hour",
+  "friends.together_time_badge": "{m} min together",
   "friends.activity_timeline_empty": "No online activity yet",
   "friends.activity_timeline_total": "{minutes} online minutes (last 30 days)",
   "friends.activity_timeline_online_now": "Online now",

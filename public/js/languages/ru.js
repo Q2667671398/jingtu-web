@@ -3318,6 +3318,7 @@ window._LANG_RU = {
   "friends.activity_timeline": "Хронология активности",
   "friends.activity_timeline_title": "Хронология онлайн-активности",
   "friends.activity_heatmap_title": "Активность по дням и часам",
+  "friends.together_time_badge": "{m} мин вместе",
   "friends.activity_timeline_empty": "Пока нет онлайн-активности",
   "friends.activity_timeline_total": "{minutes} минут онлайн (за 30 дней)",
   "friends.activity_timeline_online_now": "Сейчас онлайн",
