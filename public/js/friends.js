@@ -483,6 +483,40 @@
     _actTimelineModalReady = true;
   }
 
+  // F-01（借鉴 VRCX Activity Heatmap）：把会话按「星期×小时」聚合成 7×24 热力图。
+  // 纯前端基于已加载的 items.startedAt 计算，不加后端接口/DB 字段。
+  function renderActivityHeatmap(items) {
+    const grid = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    for (const r of items) {
+      const d = r.startedAt ? new Date(r.startedAt) : null;
+      if (!d || isNaN(d.getTime())) continue;
+      const wd = d.getDay();       // 0=周日
+      const hr = d.getHours();     // 0-23
+      const mins = r.ongoing
+        ? Math.max(1, Math.round((Date.now() - d.getTime()) / 60000))
+        : (r.durationMinutes || 0);
+      grid[wd][hr] += Math.max(1, mins);
+    }
+    const max = Math.max(1, ...grid.flat());
+    const wdLabels = ['日', '一', '二', '三', '四', '五', '六'];
+    let rows = '';
+    for (let wd = 0; wd < 7; wd++) {
+      let cells = '';
+      for (let hr = 0; hr < 24; hr++) {
+        const v = grid[wd][hr];
+        const level = v === 0 ? 0 : Math.min(4, Math.ceil((v / max) * 4));
+        const title = `${wdLabels[wd]} ${String(hr).padStart(2, '0')}:00 · ${v}min`;
+        cells += `<span class="act-heat-cell" data-level="${level}" title="${escAttr(title)}" aria-label="${escAttr(title)}"></span>`;
+      }
+      rows += `<div class="act-heat-row"><span class="act-heat-label">${wdLabels[wd]}</span>${cells}</div>`;
+    }
+    const hours = `<div class="act-heat-row act-heat-hours"><span class="act-heat-label"></span>${Array.from({ length: 24 }, (_, h) => `<span class="act-heat-hour">${h % 3 === 0 ? h : ''}</span>`).join('')}</div>`;
+    return `<div class="act-heatmap" style="margin:10px 0 14px;">
+      <div class="text-12 text-muted2" style="margin-bottom:6px;">${esc(__('friends.activity_heatmap_title') || '活跃时段分布')}</div>
+      ${hours}${rows}
+    </div>`;
+  }
+
   async function showFriendActivityTimeline(id) {
     ensureActTimelineModal();
     const title = document.getElementById('friendActTimelineTitle');
@@ -509,6 +543,7 @@
         <div class="text-13 text-muted2" style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <span>${esc(summary)}</span>${onlineBadge}
         </div>
+        ${renderActivityHeatmap(items)}
         ${items.map(r => {
           const day = fmtDate(r.startedAt);
           const start = fmtTime(r.startedAt);

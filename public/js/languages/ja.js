@@ -3320,6 +3320,7 @@ window._LANG_JA = {
   "friends.world_hist_last": "最近のアクセス",
   "friends.activity_timeline": "オンライン時間軸",
   "friends.activity_timeline_title": "オンライン活動時間軸",
+  "friends.activity_heatmap_title": "曜日 × 時間のアクティビティ",
   "friends.activity_timeline_empty": "オンライン記録はまだありません",
   "friends.activity_timeline_total": "直近 30 日間のオンライン {minutes} 分",
   "friends.activity_timeline_online_now": "現在オンライン",

@@ -3315,6 +3315,7 @@ window._LANG_FR = {
   "friends.world_hist_last": "Dernière visite",
   "friends.activity_timeline": "Chronologie d'activité",
   "friends.activity_timeline_title": "Chronologie d'activité en ligne",
+  "friends.activity_heatmap_title": "Activité par jour × heure",
   "friends.activity_timeline_empty": "Aucune activité en ligne pour le moment",
   "friends.activity_timeline_total": "{minutes} min en ligne (30 derniers jours)",
   "friends.activity_timeline_online_now": "En ligne",

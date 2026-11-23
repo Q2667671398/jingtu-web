@@ -3315,6 +3315,7 @@ window._LANG_DE = {
   "friends.world_hist_last": "Letzter Besuch",
   "friends.activity_timeline": "Aktivitätsverlauf",
   "friends.activity_timeline_title": "Online-Aktivitätsverlauf",
+  "friends.activity_heatmap_title": "Aktivität nach Wochentag × Stunde",
   "friends.activity_timeline_empty": "Noch keine Online-Aktivität",
   "friends.activity_timeline_total": "{minutes} Online-Minuten (letzte 30 Tage)",
   "friends.activity_timeline_online_now": "Gerade online",
