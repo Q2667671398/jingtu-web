@@ -374,6 +374,7 @@ window._LANG_JA = {
   "vrc.searching": "検索中...",
   "vrc.search_failed": "検索に失敗しました",
   "vrc.no_results": "結果が見つかりません",
+  "vrc.friends_here": "フレンド {n} 人在此",
   "vrc.by_author": "作者：",
   "vrc.players": "{n}人",
   "vrc.world_selected": "選択済み：",

@@ -400,6 +400,7 @@ window._LANG_DE = {
   "vrc.searching": "Suche...",
   "vrc.search_failed": "Suche fehlgeschlagen",
   "vrc.no_results": "Keine Ergebnisse gefunden",
+  "vrc.friends_here": "{n} Freunde hier",
   "vrc.by_author": "Von: ",
   "vrc.players": "{n} Spieler",
   "vrc.world_selected": "Ausgewählt: ",

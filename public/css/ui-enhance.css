@@ -1602,3 +1602,17 @@ body.home-active .tab-indicator { opacity: 0 !important; }
   .btn.btn-sm, .btn-sm { min-height: 44px !important; }
   .lap-label, .admin-badge, .lightbox-slide-btn { font-size: 12px !important; }
 }
+
+/* F-06 世界详情：好友在此徽章 */
+.world-friends-badge {
+  display: none;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent, #7c5cfc), var(--gradient-end, #a78bfa));
+  vertical-align: middle;
+  white-space: nowrap;
+}

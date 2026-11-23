@@ -261,6 +261,7 @@ window._LANG_ZH = {
   "vrc.searching": "搜索中...",
   "vrc.search_failed": "搜索失败",
   "vrc.no_results": "没有找到结果",
+  "vrc.friends_here": "{n} 位好友在此",
   "vrc.by_author": "作者：",
   "vrc.players": "{n} 人",
   "vrc.world_selected": "已选择：",

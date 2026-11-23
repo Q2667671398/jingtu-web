@@ -210,6 +210,7 @@ window._LANG_EN = {
   "vrc.searching": "Searching...",
   "vrc.search_failed": "Search failed",
   "vrc.no_results": "No results found",
+  "vrc.friends_here": "{n} friends here",
   "vrc.by_author": "By: ",
   "vrc.players": "{n} players",
   "vrc.world_selected": "Selected: ",

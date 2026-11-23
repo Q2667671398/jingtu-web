@@ -1025,6 +1025,113 @@ module.exports = function (notificationService) {
     }
   });
 
+  // ==================== F-06 GET /api/friends/in-world/:worldId ====================
+  // 世界详情增强：查询「我的好友中有谁正在这个世界的哪个实例」。
+  // group_roster.location 形如 wrld_xxx:instanceId~hidden(usr_x)~region(jp)，world_name 列实存 world_id。
+  // 仅返回我的已接受好友（防泄露非好友行踪）。
+  router.get('/in-world/:worldId', requireAuth, async (req, res) => {
+    try {
+      const me = req.session.userId;
+      const worldId = String(req.params.worldId || '').trim();
+      if (!/^wrld_[A-Za-z0-9-]+$/.test(worldId)) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '世界 ID 格式不正确');
+      }
+      const pool = getPool();
+
+      // 取我的已接受好友对应的 users 记录（vrchat_id 为关联键）
+      const [rows] = await pool.query(
+        `SELECT r.vrchat_id, r.vrchat_name, r.display_name, r.location, r.world_name,
+                u.id AS user_id, u.avatar_type, u.custom_avatar_path, u.vrchat_avatar_url
+         FROM group_roster r
+         JOIN users u ON u.vrchat_id = r.vrchat_id AND u.deleted_at IS NULL
+         JOIN user_friends f ON f.friend_id = u.id AND f.user_id = ? AND f.status = 'accepted'
+         WHERE r.is_online = 1
+           AND (r.location LIKE CONCAT(?, ':%') OR r.location = ? OR r.world_name = ?)
+         ORDER BY r.display_name ASC
+         LIMIT 200`,
+        [me, worldId, worldId, worldId]
+      );
+
+      // 解析实例信息：type（public/friends+/hidden/private）+ region
+      const parseInstance = (loc) => {
+        if (!loc || loc === 'private') return { instanceType: 'private', region: '', instanceId: '' };
+        const [head, ...tags] = String(loc).split('~');
+        const instanceId = (head || '').split(':')[1] || '';
+        let instanceType = 'public';
+        let region = '';
+        for (const tag of tags) {
+          if (tag.startsWith('hidden(')) instanceType = 'friends+';
+          else if (tag.startsWith('friends(')) instanceType = 'friends';
+          else if (tag.startsWith('private(')) instanceType = 'private';
+          else if (tag.startsWith('region(')) region = tag.slice(7, -1);
+          else if (tag === 'canRequestInvite') instanceType = instanceType === 'public' ? 'invite+' : instanceType;
+        }
+        if (!instanceId) instanceType = 'private';
+        return { instanceType, region, instanceId };
+      };
+
+      const friends = rows.map(r => {
+        const info = parseInstance(r.location);
+        return {
+          userId: r.user_id,
+          vrchatId: r.vrchat_id,
+          displayName: r.display_name || r.vrchat_name || '',
+          avatarUrl: getAvatarUrl(r) || '/api/avatar/default',
+          instanceType: info.instanceType,
+          region: info.region,
+          instanceId: info.instanceId
+        };
+      });
+
+      // 按实例分组统计
+      const byInstance = {};
+      friends.forEach(f => {
+        const k = f.instanceId || 'unknown';
+        if (!byInstance[k]) byInstance[k] = { instanceId: k, instanceType: f.instanceType, region: f.region, count: 0 };
+        byInstance[k].count++;
+      });
+
+      res.json({
+        worldId,
+        friendCount: friends.length,
+        friends,
+        instances: Object.values(byInstance).sort((a, b) => b.count - a.count)
+      });
+    } catch (e) {
+      handleError(res, e, '[friends/in-world]');
+    }
+  });
+
+  // ==================== F-06 POST /api/friends/in-worlds ====================
+  // 批量版：一次查询多个世界里各有几位我的好友（供世界搜索结果列表展示徽章）。
+  // body: { worldIds: ['wrld_x', 'wrld_y'] }（最多 30 个）
+  router.post('/in-worlds', requireAuth, async (req, res) => {
+    try {
+      const me = req.session.userId;
+      const raw = Array.isArray(req.body && req.body.worldIds) ? req.body.worldIds : [];
+      const ids = [...new Set(raw.map(String).filter(w => /^wrld_[A-Za-z0-9-]+$/.test(w)))].slice(0, 30);
+      if (!ids.length) return res.json({ counts: {} });
+      const pool = getPool();
+      const ph = ids.map(() => '?').join(',');
+      // 一次性取这些世界内、且属于我好友的在线成员，按世界分组计数
+      const [rows] = await pool.query(
+        `SELECT r.world_name AS wid, COUNT(*) AS n
+         FROM group_roster r
+         JOIN users u ON u.vrchat_id = r.vrchat_id AND u.deleted_at IS NULL
+         JOIN user_friends f ON f.friend_id = u.id AND f.user_id = ? AND f.status = 'accepted'
+         WHERE r.is_online = 1 AND r.world_name IN (${ph})
+         GROUP BY r.world_name`,
+        [me, ...ids]
+      );
+      const counts = {};
+      ids.forEach(id => { counts[id] = 0; });
+      rows.forEach(r => { if (r.wid) counts[r.wid] = Number(r.n) || 0; });
+      res.json({ counts });
+    } catch (e) {
+      handleError(res, e, '[friends/in-worlds]');
+    }
+  });
+
   // 指定好友的共同好友列表（点开详情）
   router.get('/mutuals/:targetUserId', requireAuth, async (req, res) => {
     try {

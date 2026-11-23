@@ -334,6 +334,7 @@ window._LANG_RU = {
   "vrc.searching": "Поиск...",
   "vrc.search_failed": "Поиск не удался",
   "vrc.no_results": "Результатов не найдено",
+  "vrc.friends_here": "Друзей здесь: {n}",
   "vrc.by_author": "Автор: ",
   "vrc.players": "{n} игроков",
   "vrc.world_selected": "Выбрано: ",

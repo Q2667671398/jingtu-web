@@ -30,12 +30,32 @@ function renderWorldSearchResults(worlds) {
     <div class="world-search-item" data-action="world-search-select" data-world-id="${escAttr(w.id)}" data-world-name="${escAttr(w.name)}" data-world-img="${escAttr(w.imageUrl || '')}">
       <img src="${escAttr(w.thumbnailImageUrl || w.imageUrl || '/img/world-placeholder.png')}" class="world-search-thumb" alt="${escAttr(w.name)}" loading="lazy" data-img-src-fallback="/img/world-placeholder.png">
       <div class="world-search-info">
-        <div class="world-search-name">${esc(w.name)}</div>
+        <div class="world-search-name">${esc(w.name)}<span class="world-friends-badge" data-world-badge="${escAttr(w.id)}"></span></div>
         <div class="world-search-author">${__('vrc.by_author')} ${esc(w.authorName || __('unknown'))}</div>
         <div class="world-search-stats"><span>👥 ${__('vrc.players', {n: w.capacity || 0})}</span><span>🔥 ${w.heat || 0}</span></div>
       </div>
     </div>
   `).join('');
+  // F-06：异步补充「N 位好友在此」徽章（一次批量请求，失败静默）
+  fillWorldFriendBadges(worlds.map(w => w.id).filter(Boolean));
+}
+
+async function fillWorldFriendBadges(worldIds) {
+  if (!worldIds || !worldIds.length) return;
+  try {
+    const res = await api('/api/friends/in-worlds', { method: 'POST', body: { worldIds } });
+    if (!res.ok) return;
+    const d = await res.json().catch(() => ({}));
+    const counts = d.counts || {};
+    Object.keys(counts).forEach(wid => {
+      if (!counts[wid]) return;
+      const el = document.querySelector(`[data-world-badge="${(window.CSS && CSS.escape) ? CSS.escape(wid) : wid}"]`);
+      if (el) {
+        el.textContent = (__('vrc.friends_here') || '{n} 位好友在此').replace('{n}', counts[wid]);
+        el.style.display = '';
+      }
+    });
+  } catch (e) { /* 非关键，失败静默 */ }
 }
 
 async function selectWorld(worldId, worldName, worldImageUrl, context) {
