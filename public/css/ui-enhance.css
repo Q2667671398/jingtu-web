@@ -1616,3 +1616,58 @@ body.home-active .tab-indicator { opacity: 0 !important; }
   vertical-align: middle;
   white-space: nowrap;
 }
+
+/* ==========================================================================
+   群组文件库（安装包/工具分发）
+   ========================================================================== */
+.files-toolbar { margin-bottom: 12px; }
+.files-cat-bar { display: flex; gap: 8px; flex-wrap: wrap; }
+.files-cat-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border, #e5e7eb);
+  background: var(--bg-secondary, transparent);
+  color: var(--text, inherit); font-size: 13px;
+  transition: background-color .15s ease, border-color .15s ease;
+}
+.files-cat-chip:hover { border-color: var(--accent, #7c5cfc); }
+.files-cat-chip.active {
+  background: var(--accent, #7c5cfc); border-color: var(--accent, #7c5cfc);
+  color: #fff;
+}
+.files-cat-count {
+  font-size: 11px; padding: 0 6px; border-radius: 999px;
+  background: rgba(0, 0, 0, .12);
+}
+.files-cat-chip.active .files-cat-count { background: rgba(255, 255, 255, .25); }
+
+.files-list { display: flex; flex-direction: column; gap: 8px; }
+.files-item {
+  display: flex; gap: 12px; align-items: center;
+  padding: 12px; border-radius: 12px;
+  border: 1px solid var(--border, #e5e7eb);
+  background: var(--card-bg, var(--bg-secondary, transparent));
+}
+.files-icon { font-size: 26px; flex: 0 0 auto; width: 36px; text-align: center; }
+.files-main { flex: 1; min-width: 0; }
+.files-title { font-weight: 600; font-size: 14px; word-break: break-all; }
+.files-desc { font-size: 12px; color: var(--muted, #6b7280); margin-top: 2px; word-break: break-all; }
+.files-meta {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  font-size: 12px; color: var(--muted, #6b7280); margin-top: 4px;
+}
+.files-actions { display: flex; gap: 6px; flex: 0 0 auto; flex-wrap: wrap; }
+.files-empty {
+  padding: 40px 16px; text-align: center;
+  color: var(--muted, #6b7280); font-size: 13px;
+}
+.files-cat-row {
+  display: flex; gap: 10px; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid var(--border, #e5e7eb);
+}
+.files-cat-name { flex: 1; min-width: 0; font-size: 14px; word-break: break-all; }
+
+@media (max-width: 768px) {
+  .files-item { flex-wrap: wrap; }
+  .files-actions { width: 100%; justify-content: flex-end; }
+}

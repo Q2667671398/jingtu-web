@@ -428,6 +428,7 @@ function switchTab(tab, force) {
   else if (tab === 'chat') loadChatConversations(true);
   else if (tab === 'birthday') { loadBirthdays(); loadBirthdayParties(); }
   else if (tab === 'posts') loadPosts();
+  else if (tab === 'files') { if (window.filesModule && typeof window.filesModule.init === 'function') window.filesModule.init(); }
   else if (tab === 'live') { if (typeof loadLiveStreams === 'function') loadLiveStreams(); }
   else if (tab === 'friends') { if (typeof window.showFriends === 'function') window.showFriends(); }
   else if (tab === 'follows') { if (typeof window.showFollows === 'function') window.showFollows(); }
@@ -451,7 +452,7 @@ function switchTab(tab, force) {
 // ==================== P2-98：Tab 深链路由（history + hash） ====================
 // 全站此前 0 处 pushState/popstate：刷新/后退/分享都无法回到当前 Tab。
 // 约定：home 保持干净 URL（state 携带 tab），其余 Tab 用 #<tab> 形式，可直接分享。
-const ROUTABLE_TABS = ['home', 'members', 'vrc', 'announcements', 'events', 'album', 'map', 'chat', 'birthday', 'admin', 'me', 'profile-user', 'posts', 'live', 'friends', 'follows', 'notifications'];
+const ROUTABLE_TABS = ['home', 'members', 'vrc', 'announcements', 'events', 'album', 'map', 'chat', 'birthday', 'admin', 'me', 'profile-user', 'posts', 'files', 'live', 'friends', 'follows', 'notifications'];
 let _suppressHashSync = false;
 let _hashReplaceNext = true; // 首个由启动同步写入的条目用 replace，刷新不额外增加历史
 
@@ -1072,6 +1073,7 @@ const TAB_ITEMS = [
   { id: 'birthday',      emoji: '🎂', i18n: 'nav.birthday' },
   { id: 'album',         emoji: '🖼️', i18n: 'nav.album' },
   { id: 'posts',         emoji: '📝', i18n: 'nav.posts' },
+  { id: 'files',         emoji: '📦', i18n: 'nav.files' },
   { id: 'live',          emoji: '📺', i18n: 'nav.live' },
   { id: 'map',           emoji: '🗺️', i18n: 'nav.map' },
   { id: 'chat',          emoji: '💬', i18n: 'nav.chat' },

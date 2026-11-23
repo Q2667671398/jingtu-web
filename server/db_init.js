@@ -1090,6 +1090,40 @@ async function initDatabase() {
         INDEX idx_status(status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
+      // ==================== 群组文件库（安装包/工具分发） ====================
+      // 管理员建分类 + 上传文件（安装包/压缩包/文档等），登录成员可浏览下载。
+      // 文件实际存 uploads/files/，不暴露静态直链，统一走 /api/files/:id/download 鉴权+计数。
+      `CREATE TABLE IF NOT EXISTS file_categories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL COMMENT '分类名',
+        description VARCHAR(500) DEFAULT '' COMMENT '分类说明',
+        sort_order INT DEFAULT 0 COMMENT '排序（小的在前）',
+        created_by INT NULL COMMENT '创建者 users.id',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_sort(sort_order),
+        UNIQUE KEY uk_name(name)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+      `CREATE TABLE IF NOT EXISTS group_files (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        category_id INT NULL COMMENT '所属分类（NULL=未分类）',
+        title VARCHAR(200) NOT NULL COMMENT '展示标题',
+        description TEXT COMMENT '说明',
+        original_name VARCHAR(255) NOT NULL COMMENT '原始文件名（下载时的文件名）',
+        stored_name VARCHAR(255) NOT NULL COMMENT '磁盘存储名（随机，防猜测）',
+        file_size BIGINT DEFAULT 0 COMMENT '字节数',
+        mime_type VARCHAR(150) DEFAULT '' COMMENT 'MIME',
+        ext VARCHAR(20) DEFAULT '' COMMENT '扩展名（小写含点）',
+        sha256 CHAR(64) DEFAULT '' COMMENT '完整性校验',
+        download_count INT DEFAULT 0 COMMENT '下载次数',
+        is_deleted TINYINT DEFAULT 0 COMMENT '软删除',
+        uploaded_by INT NULL COMMENT '上传者 users.id',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_category(category_id),
+        INDEX idx_deleted_created(is_deleted, created_at),
+        UNIQUE KEY uk_stored(stored_name)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
       // ==================== 好友系统 (V7.10) ====================
       // 单向行 + status 表示 user_id 对 friend_id 的视角；accepted 写两条对称行便于双向查询
       `CREATE TABLE IF NOT EXISTS user_friends (

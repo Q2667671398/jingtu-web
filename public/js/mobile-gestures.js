@@ -11,7 +11,7 @@
   // 与顶部导航一致的顺序（仅取主 Tab，排除 profile-user / admin 等非导航项）
   var TAB_ORDER = [
     'home', 'members', 'vrc', 'announcements', 'events',
-    'album', 'map', 'chat', 'birthday', 'posts', 'friends', 'follows'
+    'album', 'map', 'chat', 'birthday', 'posts', 'files', 'friends', 'follows'
   ];
 
   var MIN_DX = 70;        // 最小水平位移（px）

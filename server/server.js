@@ -630,6 +630,11 @@ app.use('/api/achievements', require('./routes/achievements'));
 app.use('/api/user-like', require('./routes/user_like')(notificationService));
 app.use('/api/feedback', require('./routes/feedback')());
 
+  // ==================== 群组文件库（安装包/工具分发） ====================
+  // 管理员建分类 + 上传；登录成员浏览下载。文件存 uploads/files/，不暴露静态直链。
+  // 注意：与既有 /api/files（管理员上传目录管理器 routes/files.js）区分，挂独立前缀。
+  app.use('/api/group-files', require('./routes/group_files')());
+
 // ==================== 聊天私信系统 V6.12 ====================
 app.use('/api/chat', require('./routes/chat')(notificationService));
 
