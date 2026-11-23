@@ -1279,6 +1279,104 @@ function _bindProfilePageDelegation() {
   document.addEventListener('click', _profilePageClickHandler);
 }
 
+// ==================== F-08 个人活动日志 ====================
+// 仅展示本人操作记录；支持按类型筛选与分页。后端 /api/users/me/activity-log。
+const _activityLogState = { page: 1, pageSize: 20, type: '', totalPages: 1, loaded: false };
+
+async function loadActivityLogTypes() {
+  const sel = document.getElementById('activityLogType');
+  if (!sel || sel.dataset.loaded === '1') return;
+  try {
+    const res = await api('/api/users/me/activity-log-types', { method: 'GET' });
+    if (!res.ok) return;
+    const d = await res.json().catch(() => ({}));
+    const types = d.types || [];
+    const keep = sel.querySelector('option[value=""]');
+    sel.innerHTML = '';
+    if (keep) sel.appendChild(keep);
+    types.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t.type;
+      o.textContent = `${t.type} (${t.count})`;
+      sel.appendChild(o);
+    });
+    sel.dataset.loaded = '1';
+  } catch (e) { /* 非关键，失败静默 */ }
+}
+
+async function loadActivityLog(page) {
+  const listEl = document.getElementById('activityLogList');
+  if (!listEl) return;
+  if (page) _activityLogState.page = page;
+  listEl.innerHTML = `<p class="text-muted2 text-13">${esc(__('activity_log.loading') || '加载中…')}</p>`;
+  try {
+    const q = `?page=${_activityLogState.page}&pageSize=${_activityLogState.pageSize}`
+      + (_activityLogState.type ? `&type=${encodeURIComponent(_activityLogState.type)}` : '');
+    const res = await api('/api/users/me/activity-log' + q, { method: 'GET' });
+    if (!res.ok) {
+      listEl.innerHTML = `<p class="text-red text-13">${esc(__('activity_log.load_failed') || '加载失败')}</p>`;
+      return;
+    }
+    const d = await res.json().catch(() => ({}));
+    const logs = d.logs || [];
+    _activityLogState.totalPages = d.totalPages || 1;
+    _activityLogState.loaded = true;
+    if (!logs.length) {
+      listEl.innerHTML = `<p class="text-muted2 text-13">${esc(__('activity_log.empty') || '暂无活动记录')}</p>`;
+      const pager = document.getElementById('activityLogPager');
+      if (pager) pager.style.display = 'none';
+      return;
+    }
+    listEl.innerHTML = logs.map(r => `
+      <div class="activity-log-item" style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb)">
+        <span class="text-12 text-muted2" style="flex:0 0 auto;min-width:132px">${esc(fmtDateTime(r.createTime))}</span>
+        <span class="badge badge-outline" style="flex:0 0 auto">${esc(r.operType)}</span>
+        <span class="text-13" style="flex:1;min-width:0;word-break:break-all">${esc(r.content)}</span>
+      </div>`).join('');
+    const pager = document.getElementById('activityLogPager');
+    const info = document.getElementById('activityLogPageInfo');
+    const prev = document.getElementById('activityLogPrev');
+    const next = document.getElementById('activityLogNext');
+    if (pager) pager.style.display = _activityLogState.totalPages > 1 ? '' : 'none';
+    if (info) info.textContent = `${_activityLogState.page} / ${_activityLogState.totalPages}`;
+    if (prev) prev.disabled = _activityLogState.page <= 1;
+    if (next) next.disabled = _activityLogState.page >= _activityLogState.totalPages;
+  } catch (e) {
+    if (!isApiHandledError(e)) listEl.innerHTML = `<p class="text-red text-13">${esc(e.message)}</p>`;
+  }
+}
+
+function _initActivityLog() {
+  const sec = document.getElementById('secActivityLog');
+  if (!sec || sec.dataset.inited === '1') return;
+  sec.dataset.inited = '1';
+  const sel = document.getElementById('activityLogType');
+  if (sel) sel.addEventListener('change', () => {
+    _activityLogState.type = sel.value;
+    loadActivityLog(1);
+  });
+  const refresh = document.getElementById('activityLogRefresh');
+  if (refresh) refresh.addEventListener('click', () => {
+    const s = document.getElementById('activityLogType');
+    if (s) s.dataset.loaded = '';
+    loadActivityLogTypes();
+    loadActivityLog(_activityLogState.page);
+  });
+  const prev = document.getElementById('activityLogPrev');
+  if (prev) prev.addEventListener('click', () => loadActivityLog(_activityLogState.page - 1));
+  const next = document.getElementById('activityLogNext');
+  if (next) next.addEventListener('click', () => loadActivityLog(_activityLogState.page + 1));
+}
+
+// 切到「我的信息」Tab 点「活动日志」时按需加载（懒加载，避免每次进站都请求）
+document.addEventListener('click', function (e) {
+  const btn = e.target && e.target.closest ? e.target.closest('[data-me-target="secActivityLog"]') : null;
+  if (!btn) return;
+  _initActivityLog();
+  loadActivityLogTypes();
+  if (!_activityLogState.loaded) loadActivityLog(1);
+});
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', _bindProfilePageDelegation);
 } else {

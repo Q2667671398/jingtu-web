@@ -10,7 +10,7 @@ const multer = require('multer');
 const sharp = require('sharp');
 const { requireAuth, getAvatarUrl, encryptAES, decryptAES } = require('../auth');
 const {
-  ok, getPool, validateFields, handleError, sendError, ErrorCodes, createFileFilter, secureUpload, normalizeSelfTags, normalizeTheme, formatDateOnly, decryptCookie
+  ok, getPool, validateFields, handleError, sendError, ErrorCodes, createFileFilter, secureUpload, normalizeSelfTags, normalizeTheme, formatDateOnly, decryptCookie, paginate
 } = require('../utils');
 const { VRC_API, VRC_API_KEY, vrchatGetUser, resolveTrustLevelFromTags } = require('../vrc');
 const wsService = require('../ws_service');
@@ -847,6 +847,81 @@ router.put('/me/location', requireAuth, async (req, res) => {
     ok(res, { message: '位置更新成功' });
   } catch (e) {
     handleError(res, e, '[users]');
+  }
+});
+
+// ==================== F-08 个人活动日志 ====================
+// GET /me/activity-log?page=1&pageSize=20&type=
+// 返回当前用户自己的操作记录（登录/注册/改密/发帖/上传等）。
+// 注意 sys_oper_log.admin_vrcid 历史上混存 login_id / 数字 user_id / vrchat_id 三种值，
+// 故需同时按三种标识匹配（与 admin/oper-logs 的口径一致，但仅查本人，不 JOIN 他人）。
+router.get('/me/activity-log', requireAuth, async (req, res) => {
+  try {
+    if (req.session.userId === 0) {
+      return sendError(res, 403, ErrorCodes.FORBIDDEN, '游客无活动日志');
+    }
+    const { page, pageSize, offset } = paginate(req, { defaultSize: 20, maxSize: 100 });
+    const type = (req.query.type || '').trim();
+
+    // 取本人的三种标识
+    const [urows] = await getPool().query(
+      `SELECT login_id, vrchat_id FROM users WHERE id = ? AND deleted_at IS NULL`, [req.session.userId]
+    );
+    if (!urows.length) return sendError(res, 404, ErrorCodes.NOT_FOUND, '用户不存在');
+    const ids = [String(req.session.userId)];
+    if (urows[0].login_id) ids.push(String(urows[0].login_id));
+    if (urows[0].vrchat_id) ids.push(String(urows[0].vrchat_id));
+
+    const where = [`admin_vrcid IN (${ids.map(() => '?').join(',')})`];
+    const params = [...ids];
+    if (type) { where.push('oper_type = ?'); params.push(type); }
+    const whereSql = 'WHERE ' + where.join(' AND ');
+
+    const [[{ total }]] = await getPool().query(
+      `SELECT COUNT(*) AS total FROM sys_oper_log ${whereSql}`, params
+    );
+    const [rows] = await getPool().query(
+      `SELECT id, oper_type, content, create_time FROM sys_oper_log ${whereSql}
+       ORDER BY create_time DESC, id DESC LIMIT ? OFFSET ?`,
+      [...params, pageSize, offset]
+    );
+
+    res.json({
+      logs: rows.map(r => ({
+        id: r.id,
+        operType: r.oper_type || '',
+        content: r.content || '',
+        createTime: r.create_time
+      })),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(total / pageSize))
+    });
+  } catch (e) {
+    handleError(res, e, '[users/me/activity-log]');
+  }
+});
+
+// 个人活动类型列表（供前端下拉筛选，只返回本人出现过的类型）
+router.get('/me/activity-log-types', requireAuth, async (req, res) => {
+  try {
+    if (req.session.userId === 0) return res.json({ types: [] });
+    const [urows] = await getPool().query(
+      `SELECT login_id, vrchat_id FROM users WHERE id = ? AND deleted_at IS NULL`, [req.session.userId]
+    );
+    if (!urows.length) return res.json({ types: [] });
+    const ids = [String(req.session.userId)];
+    if (urows[0].login_id) ids.push(String(urows[0].login_id));
+    if (urows[0].vrchat_id) ids.push(String(urows[0].vrchat_id));
+    const [rows] = await getPool().query(
+      `SELECT oper_type, COUNT(*) AS n FROM sys_oper_log
+       WHERE admin_vrcid IN (${ids.map(() => '?').join(',')})
+       GROUP BY oper_type ORDER BY n DESC LIMIT 30`, ids
+    );
+    res.json({ types: rows.map(r => ({ type: r.oper_type, count: Number(r.n) || 0 })) });
+  } catch (e) {
+    handleError(res, e, '[users/me/activity-log-types]');
   }
 });
 

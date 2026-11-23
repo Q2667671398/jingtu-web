@@ -289,7 +289,7 @@ describe('P2-70 pagination consolidation guard', () => {
     expect(offenders).toEqual([]);
   });
 
-  test('paginate() call sites stay pinned at 36 across 21 route files', () => {
+  test('paginate() call sites stay pinned at 37 across 22 route files', () => {
     let totalCalls = 0;
     const filesWithCalls = [];
     for (const name of liveRouteFiles()) {
@@ -297,8 +297,8 @@ describe('P2-70 pagination consolidation guard', () => {
       if (count > 0) filesWithCalls.push(name);
       totalCalls += count;
     }
-    expect(totalCalls).toBe(36);
-    expect(filesWithCalls.length).toBe(21);
+    expect(totalCalls).toBe(37);
+    expect(filesWithCalls.length).toBe(22);
   });
 
   // P2-70 全量回归暴露的教训：路由新增解构 utils 导出（如 paginate）后，
