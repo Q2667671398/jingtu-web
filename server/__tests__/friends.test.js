@@ -263,10 +263,10 @@ describe('关系状态 GET /api/friends/status/:userId', () => {
 describe('列表 / 待处理', () => {
   test('GET /api/friends 返回 accepted 列表', async () => {
     mockPool.query
+      .mockResolvedValueOnce([[{ total: 1 }]]) // count（G-08 后先查总数）
       .mockResolvedValueOnce([[ // list rows
         { id: 2, display_name: 'Bob', vrchat_name: 'bob', avatar_type: 'none', custom_avatar_path: null, vrchat_avatar_url: null, status: 'accepted', since: '2026-01-01', requested_by: 2 }
-      ]])
-      .mockResolvedValueOnce([[{ total: 1 }]]); // count
+      ]]);
     const res = await request(buildApp()).get('/api/friends');
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(1);

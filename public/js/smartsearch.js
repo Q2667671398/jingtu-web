@@ -116,6 +116,29 @@
   }
 
   // ---------- 渲染结果 ----------
+  // G-07 关键词高亮：先整体 HTML 转义，再在转义后的安全文本上按不区分大小写包 <mark>。
+  // 关键：只对「转义后」的文本做匹配替换，用户输入本身不参与 HTML 拼接，杜绝 XSS。
+  function highlight(text, query) {
+    var safe = esc(String(text == null ? '' : text));
+    var q = String(query || '').trim();
+    if (!q) return safe;
+    var safeQ = esc(q);
+    if (!safeQ) return safe;
+    var lower = safe.toLowerCase();
+    var needle = safeQ.toLowerCase();
+    var out = '';
+    var from = 0;
+    var idx = lower.indexOf(needle);
+    var guard = 0;
+    while (idx !== -1 && guard < 200) {
+      out += safe.slice(from, idx) + '<mark class="ss-hl">' + safe.slice(idx, idx + needle.length) + '</mark>';
+      from = idx + needle.length;
+      idx = lower.indexOf(needle, from);
+      guard++;
+    }
+    return out + safe.slice(from);
+  }
+
   function renderList(list) {
     results = list;
     cursor = -1;
@@ -125,11 +148,14 @@
       box.innerHTML = '<div class="ss-empty">' + esc((typeof __ === 'function' ? __('smartsearch.empty') : __('auto_smartsearch_1'))) + '</div>';
       return;
     }
+    // 取当前查询词（去掉 /cmd 前缀）用于高亮
+    var inputEl = document.getElementById('smartSearchInput');
+    var hlQ = inputEl ? inputEl.value.replace(/^\s*\/\w+\s*/, '').trim() : '';
     box.innerHTML = list.map(function(item, i) {
       var active = i === cursor ? ' ss-active' : '';
       return '<div class="ss-result' + active + '" data-idx="' + i + '">' +
         '<span class="ss-icon">' + esc(item.icon || '📄') + '</span>' +
-        '<span class="ss-title">' + esc(item.title) + '</span>' +
+        '<span class="ss-title">' + highlight(item.title, hlQ) + '</span>' +
         '<span class="ss-sub">' + esc(item.sub || '') + '</span>' +
       '</div>';
     }).join('');

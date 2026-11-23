@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 境途同游模块回归静态守卫：只读取源码，不启动服务或连接数据库。
  */
 const fs = require('fs');
@@ -289,7 +289,7 @@ describe('P2-70 pagination consolidation guard', () => {
     expect(offenders).toEqual([]);
   });
 
-  test('paginate() call sites stay pinned at 37 across 22 route files', () => {
+  test('paginate() call sites stay pinned at 38 across 22 route files', () => {
     let totalCalls = 0;
     const filesWithCalls = [];
     for (const name of liveRouteFiles()) {
@@ -297,7 +297,7 @@ describe('P2-70 pagination consolidation guard', () => {
       if (count > 0) filesWithCalls.push(name);
       totalCalls += count;
     }
-    expect(totalCalls).toBe(37);
+    expect(totalCalls).toBe(38);
     expect(filesWithCalls.length).toBe(22);
   });
 

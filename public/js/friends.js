@@ -88,7 +88,25 @@
         </div>
         <div class="social-section">
           <h3 class="social-h3">${__('friends.my_friends')}</h3>
+          <div class="friend-toolbar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+            <select id="friendSort" class="form-input" style="max-width:150px" aria-label="${escAttr(__('friends.sort_label'))}">
+              <option value="recent">${__('friends.sort_recent')}</option>
+              <option value="name">${__('friends.sort_name')}</option>
+              <option value="since">${__('friends.sort_since')}</option>
+            </select>
+            <select id="friendOnline" class="form-input" style="max-width:130px" aria-label="${escAttr(__('friends.online_label'))}">
+              <option value="">${__('friends.online_all')}</option>
+              <option value="online">${__('friends.online_only')}</option>
+              <option value="offline">${__('friends.offline_only')}</option>
+            </select>
+            <input id="friendFilterQ" class="form-input" type="text" style="max-width:180px" placeholder="${escAttr(__('friends.filter_placeholder'))}" autocomplete="off">
+          </div>
           <div id="friendList"></div>
+          <div id="friendListPager" class="flex-row gap-8 align-center mt-8" style="display:none">
+            <button type="button" class="btn btn-sm btn-outline" id="friendPrev">${__('friends.prev_page')}</button>
+            <span id="friendPageInfo" class="text-12 text-muted2"></span>
+            <button type="button" class="btn btn-sm btn-outline" id="friendNext">${__('friends.next_page')}</button>
+          </div>
         </div>
         <div class="social-section">
           <h3 class="social-h3">${__('friends.feed_title')}</h3>
@@ -108,6 +126,7 @@
         </div>
       </div>`;
     bindFriendsEvents();
+    bindFriendListControls();
     loadRequests();
     loadFriends();
     loadFeed();
@@ -204,36 +223,98 @@
     }
   }
 
-  async function loadFriends() {
+  // G-08 好友列表状态（排序/在线筛选/搜索/分页）
+  const _friendListState = { page: 1, pageSize: 50, sort: 'recent', online: '', q: '', totalPages: 1 };
+
+  async function loadFriends(page) {
     const el = document.getElementById('friendList');
     if (!el) return;
+    if (page) _friendListState.page = page;
     try {
+      const qs = new URLSearchParams({
+        status: 'accepted',
+        sort: _friendListState.sort,
+        page: String(_friendListState.page),
+        pageSize: String(_friendListState.pageSize)
+      });
+      if (_friendListState.online) qs.set('online', _friendListState.online);
+      if (_friendListState.q) qs.set('q', _friendListState.q);
       const [fRes, mRes] = await Promise.all([
-        api('/api/friends?status=accepted', { method: 'GET' }),
+        api('/api/friends?' + qs.toString(), { method: 'GET' }),
         api('/api/friends/mutuals', { method: 'GET' })
       ]);
       const d = await fRes.json().catch(() => ({}));
       if (!fRes.ok) { el.innerHTML = `<div class="text-muted2 p-16">${esc(errText(d))}</div>`; return; }
       const list = (d.list || []);
+      _friendListState.totalPages = d.totalPages || 1;
       const md = await mRes.json().catch(() => ({}));
       const counts = (md && md.counts) || {};
-      if (!list.length) { el.innerHTML = `<div class="text-muted2 p-16">${esc(__('friends.no_friends'))}</div>`; return; }
+      if (!list.length) {
+        el.innerHTML = `<div class="text-muted2 p-16">${esc(__('friends.no_friends'))}</div>`;
+        renderFriendPager();
+        return;
+      }
       const byId = {};
       list.forEach(u => { byId[u.id] = u; });
-      el.innerHTML = mutualTopHtml(counts, byId) + list.map(r => userRowHtml(r,
-        mutualBadge(r.id, counts[r.id] || 0) +
-        btn('history', r.id, __('friends.history'), 'btn-ghost') +
-        btn('worldhist', r.id, __('friends.world_history'), 'btn-ghost') +
-        btn('timeline', r.id, __('friends.activity_timeline'), 'btn-ghost') +
-        btn('milestones', r.id, __('friends.milestones'), 'btn-ghost') +
-        btn('message', r.id, __('chat.dm'), 'btn-outline') +
-        btn('block', r.id, __('friends.block'), 'btn-outline') +
-        btn('remove', r.id, __('friends.remove'), 'btn-danger')
-      )).join('');
+      el.innerHTML = mutualTopHtml(counts, byId) + list.map(r => {
+        const onlineDot = r.isOnline
+          ? `<span class="friend-online-dot" title="${escAttr(__('friends.online_only'))}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#22c55e;margin-right:6px;vertical-align:middle"></span>`
+          : '';
+        return userRowHtml(r,
+          mutualBadge(r.id, counts[r.id] || 0) +
+          btn('history', r.id, __('friends.history'), 'btn-ghost') +
+          btn('worldhist', r.id, __('friends.world_history'), 'btn-ghost') +
+          btn('timeline', r.id, __('friends.activity_timeline'), 'btn-ghost') +
+          btn('milestones', r.id, __('friends.milestones'), 'btn-ghost') +
+          btn('message', r.id, __('chat.dm'), 'btn-outline') +
+          btn('block', r.id, __('friends.block'), 'btn-outline') +
+          btn('remove', r.id, __('friends.remove'), 'btn-danger')
+        ).replace(/^(\s*<[^>]*class="[^"]*user-row[^"]*"[^>]*>)/, `$1${onlineDot}`);
+      }).join('');
+      renderFriendPager();
     } catch (e) {
       if (isApiHandledError(e)) return;
       el.innerHTML = `<div class="text-muted2 p-16">${esc(e.message)}</div>`;
     }
+  }
+
+  function renderFriendPager() {
+    const pager = document.getElementById('friendListPager');
+    const info = document.getElementById('friendPageInfo');
+    const prev = document.getElementById('friendPrev');
+    const next = document.getElementById('friendNext');
+    if (!pager) return;
+    const tp = _friendListState.totalPages || 1;
+    pager.style.display = tp > 1 ? '' : 'none';
+    if (info) info.textContent = `${_friendListState.page} / ${tp}`;
+    if (prev) prev.disabled = _friendListState.page <= 1;
+    if (next) next.disabled = _friendListState.page >= tp;
+  }
+
+  function bindFriendListControls() {
+    const sortEl = document.getElementById('friendSort');
+    if (sortEl && !sortEl.dataset.bound) {
+      sortEl.dataset.bound = '1';
+      sortEl.addEventListener('change', () => { _friendListState.sort = sortEl.value; loadFriends(1); });
+    }
+    const onEl = document.getElementById('friendOnline');
+    if (onEl && !onEl.dataset.bound) {
+      onEl.dataset.bound = '1';
+      onEl.addEventListener('change', () => { _friendListState.online = onEl.value; loadFriends(1); });
+    }
+    const qEl = document.getElementById('friendFilterQ');
+    if (qEl && !qEl.dataset.bound) {
+      qEl.dataset.bound = '1';
+      let timer = null;
+      qEl.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => { _friendListState.q = qEl.value.trim(); loadFriends(1); }, 300);
+      });
+    }
+    const prev = document.getElementById('friendPrev');
+    if (prev && !prev.dataset.bound) { prev.dataset.bound = '1'; prev.addEventListener('click', () => loadFriends(_friendListState.page - 1)); }
+    const next = document.getElementById('friendNext');
+    if (next && !next.dataset.bound) { next.dataset.bound = '1'; next.addEventListener('click', () => loadFriends(_friendListState.page + 1)); }
   }
 
   async function loadBlocked() {

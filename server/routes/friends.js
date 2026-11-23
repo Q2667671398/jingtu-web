@@ -348,26 +348,66 @@ module.exports = function (notificationService) {
         ? req.query.status : 'accepted';
       const pool = getPool();
 
+      // G-08：排序/筛选/分页
+      // sort: recent(默认,按好友关系更新时间) | name(昵称) | since(加好友时间)
+      // online: all(默认) | online | offline（按 group_roster.is_online）
+      // q: 按显示名/VRChat 名模糊搜索
+      const sortMap = {
+        recent: 'f.updated_at DESC',
+        name: 'u.display_name ASC',
+        since: 'f.created_at DESC'
+      };
+      const sort = sortMap[req.query.sort] || sortMap.recent;
+      const onlineFilter = ['online', 'offline'].includes(req.query.online) ? req.query.online : '';
+      const q = (req.query.q || '').trim();
+      const { page, pageSize, offset } = paginate(req, { defaultSize: 50, maxSize: 200 });
+
+      const where = ['f.user_id = ?', 'f.status = ?', 'u.deleted_at IS NULL'];
+      const params = [me, status];
+      if (q) {
+        where.push('(u.display_name LIKE ? OR u.vrchat_name LIKE ?)');
+        const like = `%${q.replace(/[%_]/g, m => '\\' + m)}%`;
+        params.push(like, like);
+      }
+      // 在线筛选：JOIN group_roster 判断
+      const onlineJoin = `LEFT JOIN group_roster gr ON gr.vrchat_id = u.vrchat_id`;
+      if (onlineFilter === 'online') where.push('gr.is_online = 1');
+      else if (onlineFilter === 'offline') where.push('(gr.is_online = 0 OR gr.is_online IS NULL)');
+      const whereSql = 'WHERE ' + where.join(' AND ');
+
+      const [[{ total }]] = await pool.query(
+        `SELECT COUNT(*) AS total
+         FROM user_friends f JOIN users u ON u.id = f.friend_id ${onlineJoin} ${whereSql}`,
+        params
+      );
+
       const [rows] = await pool.query(
         `SELECT u.id, u.display_name, u.vrchat_name, u.avatar_type, u.custom_avatar_path, u.vrchat_avatar_url,
-                f.status, f.created_at AS since, f.requested_by AS requestedBy
+                f.status, f.created_at AS since, f.requested_by AS requestedBy,
+                COALESCE(gr.is_online, 0) AS isOnline, gr.vrchat_status, gr.world_name, gr.location
          FROM user_friends f
          JOIN users u ON u.id = f.friend_id
-         WHERE f.user_id = ? AND f.status = ? AND u.deleted_at IS NULL
-         ORDER BY f.updated_at DESC`,
-        [me, status]
+         ${onlineJoin}
+         ${whereSql}
+         ORDER BY ${sort}
+         LIMIT ? OFFSET ?`,
+        [...params, pageSize, offset]
       );
       const list = rows.map(r => ({
         ...toUserSummary(r),
         status: r.status,
         since: r.since,
-        requestedBy: r.requestedBy
+        requestedBy: r.requestedBy,
+        isOnline: !!r.isOnline,
+        vrchatStatus: r.vrchat_status || 'offline'
       }));
-      const [[{ total }]] = await pool.query(
-        `SELECT COUNT(*) AS total FROM user_friends WHERE user_id = ? AND status = ?`,
-        [me, status]
-      );
-      res.json({ list, total });
+      res.json({
+        list,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.max(1, Math.ceil(total / pageSize))
+      });
     } catch (e) {
       handleError(res, e, '[friends/list]');
     }
