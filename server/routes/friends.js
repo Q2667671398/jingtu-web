@@ -494,7 +494,8 @@ module.exports = function (notificationService) {
         return res.json({ items: [], total: 0, page, pageSize });
       }
       const ph = ids.map(() => '?').join(',');
-      // album/event_sign 的 user_vrcid 存的是数字用户ID（字符串形式），同时兼容历史上存 vrchat_name 的旧数据
+      // album/event_sign 的 user_vrcid 存数字用户ID（字符串）或 VRChat ID（usr_xxx），
+      // 同时兼容历史存 vrchat_name 的旧数据——三者都匹配，避免任一格式漏查。
       const idStrs = ids.map(String);
       const phStr = idStrs.map(() => '?').join(',');
 
@@ -515,8 +516,10 @@ module.exports = function (notificationService) {
          FROM event_sign s JOIN event e ON e.id = s.event_id
          WHERE (s.user_vrcid IN (${phStr}) OR s.user_vrcid IN (
            SELECT vrchat_name FROM users WHERE id IN (${ph}) AND vrchat_name IS NOT NULL AND vrchat_name != ''
+         ) OR s.user_vrcid IN (
+           SELECT vrchat_id FROM users WHERE id IN (${ph}) AND vrchat_id IS NOT NULL AND vrchat_id != ''
          )) AND s.is_sign = 1 AND s.sign_time IS NOT NULL
-         ORDER BY s.sign_time DESC LIMIT ?`, [...idStrs, ...ids, pageSize]
+         ORDER BY s.sign_time DESC LIMIT ?`, [...idStrs, ...ids, ...ids, pageSize]
       );
       // 3) 相册照片 album_photo
       const [photos] = await pool.query(
@@ -525,8 +528,10 @@ module.exports = function (notificationService) {
          FROM album_photo a
          WHERE (a.upload_vrcid IN (${phStr}) OR a.upload_vrcid IN (
            SELECT vrchat_name FROM users WHERE id IN (${ph}) AND vrchat_name IS NOT NULL AND vrchat_name != ''
+         ) OR a.upload_vrcid IN (
+           SELECT vrchat_id FROM users WHERE id IN (${ph}) AND vrchat_id IS NOT NULL AND vrchat_id != ''
          )) AND a.visibility IN ('public','members_only') AND a.is_recycle = 0
-         ORDER BY a.create_time DESC LIMIT ?`, [...idStrs, ...ids, pageSize]
+         ORDER BY a.create_time DESC LIMIT ?`, [...idStrs, ...ids, ...ids, pageSize]
       );
 
       // 归一化为统一 feed item
@@ -603,28 +608,30 @@ module.exports = function (notificationService) {
         }
       }
 
-      // 取目标用户 vrchat_id（好友变更历史以 vrchat_id 为键）
+      // 取目标用户的 VRChat 标识（friend_log.vrchat_id 存的是 VRChat 用户 ID 如 usr_xxx；
+      // 兼容历史上可能存的 vrchat_name）。历史 bug：只用 vrchat_name 匹配导致查询恒空。
       const [urows] = await pool.query(
-        `SELECT vrchat_name FROM users WHERE id = ? AND deleted_at IS NULL`, [target]
+        `SELECT vrchat_name, vrchat_id FROM users WHERE id = ? AND deleted_at IS NULL`, [target]
       );
-      if (!urows.length || !urows[0].vrchat_name) {
+      if (!urows.length || (!urows[0].vrchat_id && !urows[0].vrchat_name)) {
         return res.json({ items: [], total: 0 });
       }
-      const vrcid = urows[0].vrchat_name;
+      const vrcids = [urows[0].vrchat_id, urows[0].vrchat_name].filter(Boolean);
 
       const { page, pageSize, offset } = paginate(req, { defaultSize: 30, maxSize: 100 });
 
+      const idPh = vrcids.map(() => '?').join(',');
       const [cntRows] = await pool.query(
-        `SELECT COUNT(*) AS c FROM friend_log WHERE vrchat_id = ?`, [vrcid]
+        `SELECT COUNT(*) AS c FROM friend_log WHERE vrchat_id IN (${idPh})`, vrcids
       );
       const total = cntRows[0].c || 0;
 
       const [items] = await pool.query(
         `SELECT id, change_type, old_value, new_value, created_at
-         FROM friend_log WHERE vrchat_id = ?
+         FROM friend_log WHERE vrchat_id IN (${idPh})
          ORDER BY created_at DESC, id DESC
          LIMIT ? OFFSET ?`,
-        [vrcid, pageSize, offset]
+        [...vrcids, pageSize, offset]
       );
 
       res.json({
@@ -664,27 +671,29 @@ module.exports = function (notificationService) {
         }
       }
 
-      // 取目标用户 vrchat_id（世界访问历史以 vrchat_id 为键）
+      // 取目标用户 VRChat 标识（world_visit_log.vrchat_id 存 VRChat 用户 ID 如 usr_xxx；
+      // 兼容历史 vrchat_name）。历史 bug：只用 vrchat_name 匹配导致查询恒空。
       const [urows] = await pool.query(
-        `SELECT vrchat_name FROM users WHERE id = ? AND deleted_at IS NULL`, [target]
+        `SELECT vrchat_name, vrchat_id FROM users WHERE id = ? AND deleted_at IS NULL`, [target]
       );
-      if (!urows.length || !urows[0].vrchat_name) {
+      if (!urows.length || (!urows[0].vrchat_id && !urows[0].vrchat_name)) {
         return res.json({ items: [], total: 0 });
       }
-      const vrcid = urows[0].vrchat_name;
+      const vrcids = [urows[0].vrchat_id, urows[0].vrchat_name].filter(Boolean);
+      const idPh = vrcids.map(() => '?').join(',');
 
       // 足迹聚合：按 world_id 去重，返回访问次数与首次/最近访问时间，按最近访问倒序
       const [items] = await pool.query(
         `SELECT world_id, world_name, visit_count, first_visit_at, last_visit_at
-         FROM world_visit_log WHERE vrchat_id = ?
+         FROM world_visit_log WHERE vrchat_id IN (${idPh})
          ORDER BY last_visit_at DESC, visit_count DESC
          LIMIT 100`,
-        [vrcid]
+        vrcids
       );
 
       const [cntRows] = await pool.query(
-        `SELECT COUNT(*) AS c, COALESCE(SUM(visit_count),0) AS visits FROM world_visit_log WHERE vrchat_id = ?`,
-        [vrcid]
+        `SELECT COUNT(*) AS c, COALESCE(SUM(visit_count),0) AS visits FROM world_visit_log WHERE vrchat_id IN (${idPh})`,
+        vrcids
       );
 
       res.json({
@@ -725,27 +734,29 @@ module.exports = function (notificationService) {
         }
       }
 
-      // 取目标用户 vrchat_id（头像历史以 vrchat_id 为键）
+      // 取目标用户 VRChat 标识（avatar_history_log.vrchat_id 存 VRChat 用户 ID 如 usr_xxx；
+      // 兼容历史 vrchat_name）。历史 bug：只用 vrchat_name 匹配导致查询恒空。
       const [urows] = await pool.query(
-        `SELECT vrchat_name FROM users WHERE id = ? AND deleted_at IS NULL`, [target]
+        `SELECT vrchat_name, vrchat_id FROM users WHERE id = ? AND deleted_at IS NULL`, [target]
       );
-      if (!urows.length || !urows[0].vrchat_name) {
+      if (!urows.length || (!urows[0].vrchat_id && !urows[0].vrchat_name)) {
         return res.json({ items: [], total: 0 });
       }
-      const vrcid = urows[0].vrchat_name;
+      const vrcids = [urows[0].vrchat_id, urows[0].vrchat_name].filter(Boolean);
+      const idPh = vrcids.map(() => '?').join(',');
 
       // 头像历史聚合：按 avatar_id 去重，返回使用次数与首次/最近使用时间，按最近使用倒序
       const [items] = await pool.query(
         `SELECT avatar_id, avatar_url, use_count, first_seen_at, last_seen_at
-         FROM avatar_history_log WHERE vrchat_id = ?
+         FROM avatar_history_log WHERE vrchat_id IN (${idPh})
          ORDER BY last_seen_at DESC, use_count DESC
          LIMIT 100`,
-        [vrcid]
+        vrcids
       );
 
       const [cntRows] = await pool.query(
-        `SELECT COUNT(*) AS c, COALESCE(SUM(use_count),0) AS uses FROM avatar_history_log WHERE vrchat_id = ?`,
-        [vrcid]
+        `SELECT COUNT(*) AS c, COALESCE(SUM(use_count),0) AS uses FROM avatar_history_log WHERE vrchat_id IN (${idPh})`,
+        vrcids
       );
 
       res.json({
