@@ -1540,3 +1540,65 @@ body.home-active .tab-indicator { opacity: 0 !important; }
 }
 
 
+
+/* ==========================================================================
+   平台适配增强（2026-11-23）
+   参考：WCAG 2.5.8 触摸目标最小 24px（AA）/ Apple HIG 44pt / Material 48dp；
+   Lighthouse 移动端可读性：正文 <12px 需放大。此处针对触屏设备统一提升。
+   ========================================================================== */
+@media (hover: none), (pointer: coarse) {
+  /* 头部图标按钮：铃铛/主题/语言/密码切换 提升到 44px 触控热区 */
+  .bell-btn, .theme-btn, .pwd-toggle, .lang-switcher-btn {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* 移动端「更多」按钮 */
+  .mobile-more-btn { min-width: 48px; }
+  /* 页脚社交链接：垂直内边距补足到 44px 高 */
+  footer .social-link, .social-link {
+    min-height: 44px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    display: inline-flex;
+    align-items: center;
+  }
+  /* 小号按钮（btn-sm）触屏下加高 */
+  .btn.btn-sm { min-height: 40px; padding-top: 8px; padding-bottom: 8px; }
+  /* 筛选/标签按钮文字不小于 12px（移动端可读性） */
+  .group-filter-btn, .evt-status-btn, .post-filter-btn, .coll-kind, .coll-scope, .mc-subtab {
+    font-size: 12px;
+  }
+  /* 个人中心统计标签字号提升 */
+  .me-stat-label { font-size: 12px; }
+}
+@media (hover: none), (pointer: coarse) {
+  .bell-btn, .theme-btn, .pwd-toggle, .lang-switcher-btn,
+  #bellBtn, #themeBtn, #pwdToggle, #langSwitcherBtn {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  .mobile-more-btn, #mobileMoreBtn { min-width: 48px !important; }
+  footer .social-link, .social-link {
+    min-height: 44px !important;
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+  }
+  .btn.btn-sm { min-height: 40px !important; padding-top: 8px !important; padding-bottom: 8px !important; }
+  .group-filter-btn, .evt-status-btn, .post-filter-btn, .coll-kind, .coll-scope, .mc-subtab,
+  .me-stat-label, .init-step-label {
+    font-size: 12px !important;
+  }
+}
+@media (hover: none), (pointer: coarse) {
+  /* 触屏下所有 .btn-sm 统一 44px 触控高度（含首页自定义/查看全部） */
+  .btn.btn-sm, .btn-sm { min-height: 44px !important; }
+  .lap-label, .admin-badge, .lightbox-slide-btn { font-size: 12px !important; }
+}
