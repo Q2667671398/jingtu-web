@@ -2119,6 +2119,7 @@ window._LANG_DE = {
   "smartsearch.post_sub": "Beitrag ·",
   "smartsearch.event": "Veranstaltung",
   "smartsearch.event_sub": "Veranstaltung · /event",
+  "smartsearch.direct_sub": "VRChat-ID öffnen",
   "smartsearch.event_hint": "Schlüsselwort eingeben, z. B. /event Party",
   "smartsearch.group_sub": "Gruppenmitglied · /group",
   "smartsearch.group_hint": "Spielername eingeben, z. B. /group Max",

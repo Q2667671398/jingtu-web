@@ -2119,6 +2119,7 @@ window._LANG_FR = {
   "smartsearch.post_sub": "Publication ·",
   "smartsearch.event": "Événement",
   "smartsearch.event_sub": "Événement · /event",
+  "smartsearch.direct_sub": "Ouvrir l’ID VRChat",
   "smartsearch.event_hint": "Tapez un mot-clé, ex. /event fête",
   "smartsearch.group_sub": "Membre du groupe · /group",
   "smartsearch.group_hint": "Tapez un nom de joueur, ex. /group Luna",

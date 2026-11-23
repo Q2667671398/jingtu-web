@@ -205,6 +205,23 @@
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(function() {
       var my = ++searchSeq;
+      // F-02：VRChat ID / URL 直达优先（不与其他结果混合，避免歧义）
+      var direct = resolveDirectVrcId(q);
+      if (direct) {
+        var dIcon = direct.type === 'world' ? '🌐' : direct.type === 'avatar' ? '🎭' : direct.type === 'group' ? '🏛️' : '👤';
+        var dSub = __('smartsearch.direct_sub') || 'VRChat ID 直达';
+        var dAction;
+        if (direct.type === 'user' || direct.type === 'group') {
+          dAction = (function(vid) { return function() { openGroupMember(vid); }; })(direct.id);
+        } else if (direct.type === 'world') {
+          dAction = (function(wid) { return function() { openWorldById(wid); }; })(direct.id);
+        } else {
+          // avatar/group 无直接卡片：跳 VRC tab 并提示（保守处理）
+          dAction = (function(id) { return function() { switchToTab('vrc'); toast(id, 'info'); }; })(direct.id);
+        }
+        renderList([{ icon: dIcon, title: direct.id, sub: dSub, action: dAction }]);
+        return;
+      }
       var list = [];
       // 导航匹配
       NAV_ITEMS.forEach(function(n) {
@@ -420,6 +437,42 @@
       .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
       .then(function(data) { return ((data && data.members) || []).slice(0, 8); })
       .catch(function() { return []; });
+  }
+
+  // ---------- VRChat ID / URL 直达（F-02）----------
+  // 识别粘贴的 VRChat ID 或完整 URL，返回 { type, id }；type ∈ user|world|avatar|group
+  function resolveDirectVrcId(raw) {
+    var s = (raw || '').trim();
+    if (!s) return null;
+    // 完整 URL：https://vrchat.com/home/user/usr_xxx 等
+    var urlM = s.match(/vrchat\.com\/home\/(user|world|avatar|group)\/([a-z]+_[A-Za-z0-9-]+)/i);
+    if (urlM) {
+      var map = { user: 'user', world: 'world', avatar: 'avatar', group: 'group' };
+      return { type: map[urlM[1].toLowerCase()], id: urlM[2] };
+    }
+    // 裸 ID：usr_ / wrld_ / avtr_ / grp_（VRChat 官方前缀），前后可有空白
+    var idM = s.match(/^(usr_|wrld_|avtr_|grp_)([A-Za-z0-9-]+)$/i);
+    if (idM) {
+      var p = idM[1].toLowerCase();
+      var type = p === 'usr_' ? 'user' : p === 'wrld_' ? 'world' : p === 'avtr_' ? 'avatar' : 'group';
+      return { type: type, id: s };
+    }
+    return null;
+  }
+
+  function openWorldById(id) {
+    switchToTab('vrc');
+    setTimeout(function() {
+      if (typeof window.openWorldSearch === 'function') {
+        window.openWorldSearch('evt');
+      }
+      var box = document.getElementById('worldSearchInput');
+      if (box) {
+        box.value = id;
+        if (typeof window.doWorldSearch === 'function') window.doWorldSearch();
+        else box.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }, 160);
   }
 
   // ---------- 工具 ----------

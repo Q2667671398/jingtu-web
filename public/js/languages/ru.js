@@ -2151,6 +2151,7 @@ window._LANG_RU = {
   "smartsearch.post_sub": "Запись ·",
   "smartsearch.event": "Событие",
   "smartsearch.event_sub": "Событие · /event",
+  "smartsearch.direct_sub": "Открыть VRChat ID",
   "smartsearch.event_hint": "Введите ключевое слово, напр. /event вечеринка",
   "smartsearch.group_sub": "Участник группы · /group",
   "smartsearch.group_hint": "Введите имя игрока, напр. /group Иван",

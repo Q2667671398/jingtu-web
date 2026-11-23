@@ -849,6 +849,7 @@ window._LANG_ZH = {
   "smartsearch.post_sub": "动态 ·",
   "smartsearch.event": "活动",
   "smartsearch.event_sub": "活动 · /event",
+  "smartsearch.direct_sub": "VRChat ID 直达",
   "smartsearch.event_hint": "输入关键词，如 /event 聚餐",
   "smartsearch.group_sub": "群组成员 · /group",
   "smartsearch.group_hint": "输入玩家名，如 /group 阿伟",

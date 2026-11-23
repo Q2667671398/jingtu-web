@@ -2282,6 +2282,7 @@ window._LANG_EN = {
   "smartsearch.post_sub": "Post ·",
   "smartsearch.event": "Event",
   "smartsearch.event_sub": "Event · /event",
+  "smartsearch.direct_sub": "Open VRChat ID",
   "smartsearch.event_hint": "Type a keyword, e.g. /event party",
   "smartsearch.group_sub": "Group member · /group",
   "smartsearch.group_hint": "Type a player name, e.g. /group Ava",

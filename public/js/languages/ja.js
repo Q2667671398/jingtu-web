@@ -2119,6 +2119,7 @@ window._LANG_JA = {
   "smartsearch.post_sub": "動画 ·",
   "smartsearch.event": "活動",
   "smartsearch.event_sub": "活動 · /event",
+  "smartsearch.direct_sub": "VRChat ID を開く",
   "smartsearch.event_hint": "キーワードを入力、例：/event パーティー",
   "smartsearch.group_sub": "グループメンバー · /group",
   "smartsearch.group_hint": "プレイヤー名を入力、例：/group たけし",
