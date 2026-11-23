@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 境途同游 V7.10 — 好友系统路由
  * 单向行 + status 表示 user_id 对 friend_id 的视角；
  *   accepted 写两条对称行便于双向查询；
@@ -1380,6 +1380,9 @@ module.exports = function (notificationService) {
       const me = req.session.userId;
       if (!me) return sendError(res, 403, ErrorCodes.FORBIDDEN, '游客无年度回顾');
       const year = Math.min(Math.max(parseInt(req.query.year, 10) || new Date().getFullYear(), 2000), 2100);
+      // 用日期范围而非 YEAR(col)=? —— 后者会导致索引失效（无法做范围查找）
+      const yStart = `${year}-01-01`;
+      const yEnd = `${year + 1}-01-01`;
       const pool = getPool();
 
       const [urows] = await pool.query(
@@ -1398,19 +1401,19 @@ module.exports = function (notificationService) {
                 COALESCE(SUM(CASE WHEN ended_at IS NOT NULL THEN duration_minutes
                                   ELSE TIMESTAMPDIFF(MINUTE, started_at, NOW()) END), 0) AS minutes
          FROM activity_sessions
-         WHERE vrchat_id IN (${idPh}) AND YEAR(started_at) = ?`,
-        [...myIds, year]
+         WHERE vrchat_id IN (${idPh}) AND started_at >= ? AND started_at < ?`,
+        [...myIds, yStart, yEnd]
       );
 
       // 2) 最长的一次会话
       const [longestRows] = await pool.query(
         `SELECT started_at, ended_at, duration_minutes, world_name
          FROM activity_sessions
-         WHERE vrchat_id IN (${idPh}) AND YEAR(started_at) = ?
+         WHERE vrchat_id IN (${idPh}) AND started_at >= ? AND started_at < ?
          ORDER BY (CASE WHEN ended_at IS NOT NULL THEN duration_minutes
                         ELSE TIMESTAMPDIFF(MINUTE, started_at, NOW()) END) DESC
          LIMIT 1`,
-        [...myIds, year]
+        [...myIds, yStart, yEnd]
       );
 
       // 3) 常去世界 TOP5（该年内有访问的世界，按累计访问次数）
@@ -1421,26 +1424,26 @@ module.exports = function (notificationService) {
          FROM world_visit_log w
          LEFT JOIN vrc_worlds_cache c ON c.world_id = w.world_id
          WHERE w.vrchat_id IN (${idPh}) AND w.world_id LIKE 'wrld_%'
-           AND YEAR(w.last_visit_at) = ?
+           AND w.last_visit_at >= ? AND w.last_visit_at < ?
          GROUP BY w.world_id, world_name, c.image_url
          ORDER BY visits DESC
          LIMIT 5`,
-        [...myIds, year]
+        [...myIds, yStart, yEnd]
       );
 
       // 4) 活跃天数（该年有会话的不同日期数）
       const [[dayRow]] = await pool.query(
         `SELECT COUNT(DISTINCT DATE(started_at)) AS days
-         FROM activity_sessions WHERE vrchat_id IN (${idPh}) AND YEAR(started_at) = ?`,
-        [...myIds, year]
+         FROM activity_sessions WHERE vrchat_id IN (${idPh}) AND started_at >= ? AND started_at < ?`,
+        [...myIds, yStart, yEnd]
       );
 
       // 5) 世界总数（该年去过的不同世界）
       const [[worldCountRow]] = await pool.query(
         `SELECT COUNT(DISTINCT world_id) AS worlds
          FROM world_visit_log WHERE vrchat_id IN (${idPh}) AND world_id LIKE 'wrld_%'
-           AND YEAR(last_visit_at) = ?`,
-        [...myIds, year]
+           AND last_visit_at >= ? AND last_visit_at < ?`,
+        [...myIds, yStart, yEnd]
       );
 
       // 未命中缓存的世界异步回填

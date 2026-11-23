@@ -199,7 +199,7 @@
         const m = it.totalMinutes % 60;
         const dur = h > 0 ? `${h}h ${m}m` : `${m}m`;
         return `
-        <div class="world-rank-item" data-action="member-open" data-id="${it.userId}" style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb);cursor:pointer">
+        <div class="world-rank-item" data-action="member-open" data-id="${it.userId}" role="button" tabindex="0" style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb);cursor:pointer">
           <span class="text-13" style="flex:0 0 24px;font-weight:700;color:var(--accent,#7c5cfc)">#${it.rank}</span>
           <img src="${escAttr(it.avatarUrl)}" alt="" loading="lazy" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex:0 0 auto">
           <div style="flex:1;min-width:0">
@@ -225,7 +225,7 @@
       const items = d.items || [];
       if (!items.length) { el.innerHTML = `<div class="text-muted2 text-13">${esc(__('friends.world_ranking_empty'))}</div>`; return; }
       el.innerHTML = items.map(it => `
-        <div class="world-rank-item" data-action="world-rank-open" data-world-id="${escAttr(it.worldId)}" style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb);cursor:pointer">
+        <div class="world-rank-item" data-action="world-rank-open" data-world-id="${escAttr(it.worldId)}" role="button" tabindex="0" style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb);cursor:pointer">
           <span class="text-13" style="flex:0 0 24px;font-weight:700;color:var(--accent,#7c5cfc)">#${it.rank}</span>
           ${it.imageUrl ? `<img src="${escAttr(it.imageUrl)}" alt="" loading="lazy" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex:0 0 auto">` : ''}
           <div style="flex:1;min-width:0">
@@ -276,11 +276,14 @@
 
   // G-08 好友列表状态（排序/在线筛选/搜索/分页）
   const _friendListState = { page: 1, pageSize: 50, sort: 'recent', online: '', q: '', totalPages: 1 };
+  // 请求序号：快速切换排序/筛选/搜索时，丢弃陈旧响应，避免旧结果覆盖新结果
+  let _friendListSeq = 0;
 
   async function loadFriends(page) {
     const el = document.getElementById('friendList');
     if (!el) return;
     if (page) _friendListState.page = page;
+    const mySeq = ++_friendListSeq;
     try {
       const qs = new URLSearchParams({
         status: 'accepted',
@@ -295,6 +298,7 @@
         api('/api/friends/mutuals', { method: 'GET' })
       ]);
       const d = await fRes.json().catch(() => ({}));
+      if (mySeq !== _friendListSeq) return; // 已有更新的请求，丢弃陈旧响应
       if (!fRes.ok) { el.innerHTML = `<div class="text-muted2 p-16">${esc(errText(d))}</div>`; return; }
       const list = (d.list || []);
       _friendListState.totalPages = d.totalPages || 1;
@@ -691,7 +695,10 @@
   }
 
   // G-12 历史流水 CSV 导出
+  let _exportingCsv = false;
   async function exportFriendsCsv(type, userId) {
+    if (_exportingCsv) return; // 防重复点击导致多次下载
+    _exportingCsv = true;
     try {
       const q = `?type=${encodeURIComponent(type)}` + (userId ? `&userId=${userId}` : '');
       const res = await api('/api/friends/export-csv' + q, { method: 'GET' });
@@ -708,6 +715,8 @@
       toast(__('friends.export_ok') || '已开始下载', 'success');
     } catch (e) {
       if (!isApiHandledError(e)) toast(e.message, 'error');
+    } finally {
+      _exportingCsv = false;
     }
   }
 
@@ -1053,6 +1062,14 @@
           return;
         }
         doAction(action, id);
+      });
+      // 无障碍：可聚焦的排行项支持 Enter / Space 触发（等价于点击）
+      root.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const el = e.target && e.target.closest ? e.target.closest('[role="button"][data-action]') : null;
+        if (!el) return;
+        e.preventDefault();
+        el.click();
       });
     }
     // 搜索输入框每次渲染都会被重建，必须重新绑定，否则二次进入 tab 后搜索失效

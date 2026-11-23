@@ -189,7 +189,8 @@ function fail(res, status, message, extra) {
  */
 function paginate(req, opts = {}) {
   const { sizeParam = 'pageSize', defaultSize = 20, maxSize = Infinity, minSize = 1, fixedSize } = opts;
-  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  // page 上限 10000：防止 page=999999999 造成超大 OFFSET 慢查询（正常业务翻不到这么多页）
+  const page = Math.min(Math.max(1, parseInt(req.query.page, 10) || 1), 10000);
   const pageSize = fixedSize !== undefined
     ? fixedSize
     : Math.min(maxSize, Math.max(minSize, parseInt(req.query[sizeParam], 10) || defaultSize));
