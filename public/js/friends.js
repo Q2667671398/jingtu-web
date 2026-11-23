@@ -121,6 +121,10 @@
           <div id="friendActivityRanking"><p class="text-muted2 text-13">${__('common.loading')}</p></div>
         </div>
         <div class="social-section">
+          <h3 class="social-h3">🎊 <span data-i18n="friends.rewind">年度回顾</span></h3>
+          <div id="friendRewind"><p class="text-muted2 text-13">${__('common.loading')}</p></div>
+        </div>
+        <div class="social-section">
           <h3 class="social-h3">${__('friends.blocked_list')}</h3>
           <div id="friendBlocked"></div>
         </div>
@@ -133,6 +137,50 @@
     loadBlocked();
     loadWorldRanking();
     loadActivityRanking();
+    loadRewind();
+  }
+
+  // G-11 年度回顾（我的）
+  async function loadRewind() {
+    const el = document.getElementById('friendRewind');
+    if (!el) return;
+    try {
+      const year = new Date().getFullYear();
+      const res = await api('/api/friends/rewind?year=' + year, { method: 'GET' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { el.innerHTML = `<div class="text-muted2 text-13">${esc(errText(d))}</div>`; return; }
+      if (!d.hasData) {
+        el.innerHTML = `<div class="text-muted2 text-13">${esc((__('friends.rewind_empty') || '{y} 年暂无数据').replace('{y}', d.year || year))}</div>`;
+        return;
+      }
+      const stat = (label, value) => `
+        <div style="flex:1 1 120px;min-width:110px;background:var(--bg-secondary,rgba(124,92,252,.06));border-radius:10px;padding:10px 12px">
+          <div class="text-12 text-muted2">${esc(label)}</div>
+          <div style="font-size:20px;font-weight:700;color:var(--accent,#7c5cfc);line-height:1.3">${esc(value)}</div>
+        </div>`;
+      const topWorlds = (d.topWorlds || []).map((w, i) => `
+        <div style="display:flex;gap:8px;align-items:center;padding:6px 0">
+          <span class="text-12" style="flex:0 0 18px;color:var(--accent,#7c5cfc);font-weight:700">#${i + 1}</span>
+          ${w.imageUrl ? `<img src="${escAttr(w.imageUrl)}" alt="" loading="lazy" style="width:32px;height:32px;border-radius:6px;object-fit:cover">` : ''}
+          <span class="text-13" style="flex:1;min-width:0;word-break:break-all">${esc(w.worldName)}</span>
+          <span class="text-12 text-muted2">${esc((__('friends.rewind_visits') || '{n} 次').replace('{n}', w.visits))}</span>
+        </div>`).join('');
+      const longest = d.longestSession
+        ? `<div class="text-12 text-muted2" style="margin-top:6px">${esc((__('friends.rewind_longest') || '最长一次：{m} 分钟 · {w}')
+            .replace('{m}', d.longestSession.minutes).replace('{w}', d.longestSession.worldName || '—'))}</div>`
+        : '';
+      el.innerHTML = `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          ${stat(__('friends.rewind_hours'), (d.totalHours || 0) + ' h')}
+          ${stat(__('friends.rewind_sessions'), d.sessionCount || 0)}
+          ${stat(__('friends.rewind_days'), d.activeDays || 0)}
+          ${stat(__('friends.rewind_worlds'), d.worldCount || 0)}
+        </div>
+        ${longest}
+        ${topWorlds ? `<div class="text-12 text-muted2" style="margin:10px 0 4px">${esc(__('friends.rewind_top_worlds'))}</div>${topWorlds}` : ''}`;
+    } catch (e) {
+      if (!isApiHandledError(e)) el.innerHTML = `<div class="text-muted2 text-13">${esc(e.message)}</div>`;
+    }
   }
 
   // G-02 好友活跃度榜（近 N 天在线时长）
@@ -266,6 +314,7 @@
           btn('worldhist', r.id, __('friends.world_history'), 'btn-ghost') +
           btn('timeline', r.id, __('friends.activity_timeline'), 'btn-ghost') +
           btn('milestones', r.id, __('friends.milestones'), 'btn-ghost') +
+        btn('commonworlds', r.id, __('friends.common_worlds'), 'btn-ghost') +
           btn('message', r.id, __('chat.dm'), 'btn-outline') +
           btn('block', r.id, __('friends.block'), 'btn-outline') +
           btn('remove', r.id, __('friends.remove'), 'btn-danger')
@@ -585,23 +634,95 @@
       const summary = (__('friends.world_hist_summary') || '{worlds} 个世界 · {visits} 次访问')
         .replace('{worlds}', d.totalWorlds || items.length)
         .replace('{visits}', d.totalVisits || 0);
-      if (body) body.innerHTML = `
-        <div class="text-13 text-muted2" style="margin-bottom:10px;">${esc(summary)}</div>
-        ${items.map(r => {
+      // G-06：排序切换（前端排序，避免额外请求）
+      const renderWorldHist = (sortBy) => {
+        const sorted = items.slice().sort((a, b) => {
+          if (sortBy === 'visits') return (b.visitCount || 0) - (a.visitCount || 0);
+          if (sortBy === 'first') return new Date(a.firstVisitAt || 0) - new Date(b.firstVisitAt || 0);
+          return new Date(b.lastVisitAt || 0) - new Date(a.lastVisitAt || 0); // recent 默认
+        });
+        const rows = sorted.map(r => {
           const name = r.worldName || r.worldId || '—';
+          const showId = name !== r.worldId;
           return `
             <div class="hist-item" style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border,#e5e7eb);align-items:center;">
               <div style="flex:1;min-width:0;">
                 <div class="text-13" style="font-weight:600;word-break:break-all;">${esc(name)}</div>
                 <div class="text-12 text-muted2" style="word-break:break-all;">
-                  ${esc(r.worldId)} · ${r.visitCount}${esc(__('friends.world_hist_visits'))}
+                  ${showId ? esc(r.worldId) + ' · ' : ''}${r.visitCount}${esc(__('friends.world_hist_visits'))}
                 </div>
                 <div class="text-12 text-muted2" style="margin-top:2px;">
                   ${esc(__('friends.world_hist_first'))}: ${esc(fmtTime(r.firstVisitAt))} · ${esc(__('friends.world_hist_last'))}: ${esc(fmtTime(r.lastVisitAt))}
                 </div>
               </div>
             </div>`;
-        }).join('')}`;
+        }).join('');
+        const listEl = document.getElementById('worldHistList');
+        if (listEl) listEl.innerHTML = rows;
+      };
+      if (body) body.innerHTML = `
+        <div class="flex-row gap-8 align-center" style="margin-bottom:10px;flex-wrap:wrap">
+          <span class="text-13 text-muted2">${esc(summary)}</span>
+          <select id="worldHistSort" class="form-input" style="max-width:150px;margin-left:auto" aria-label="${escAttr(__('friends.sort_label'))}">
+            <option value="recent">${esc(__('friends.world_sort_recent'))}</option>
+            <option value="visits">${esc(__('friends.world_sort_visits'))}</option>
+            <option value="first">${esc(__('friends.world_sort_first'))}</option>
+          </select>
+        </div>
+        <div id="worldHistList"></div>`;
+      renderWorldHist('recent');
+      const sortEl = document.getElementById('worldHistSort');
+      if (sortEl) sortEl.addEventListener('change', () => renderWorldHist(sortEl.value));
+    } catch (e) {
+      if (isApiHandledError(e)) return;
+      if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(e.message)}</div>`;
+    }
+  }
+
+  // ==================== G-04 共同世界 ====================
+  let _commonWorldsModalReady = false;
+  function ensureCommonWorldsModal() {
+    if (_commonWorldsModalReady && document.getElementById('commonWorldsModal')) return;
+    const el = document.createElement('div');
+    el.className = 'modal';
+    el.id = 'commonWorldsModal';
+    el.style.display = 'none';
+    el.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="commonWorldsTitle" class="modal-title"></h3>
+          <button class="modal-close" data-modal-close="commonWorldsModal" aria-label="close">&times;</button>
+        </div>
+        <div class="modal-body" id="commonWorldsBody"></div>
+      </div>`;
+    document.body.appendChild(el);
+    _commonWorldsModalReady = true;
+  }
+
+  async function showCommonWorlds(id) {
+    ensureCommonWorldsModal();
+    const title = document.getElementById('commonWorldsTitle');
+    const body = document.getElementById('commonWorldsBody');
+    if (title) title.textContent = __('friends.common_worlds_title');
+    if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(__('common.loading') || '加载中…')}</div>`;
+    showModal('commonWorldsModal');
+    try {
+      const res = await api('/api/friends/common-worlds/' + id, { method: 'GET' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(errText(d))}</div>`; return; }
+      const items = d.items || [];
+      if (!items.length) {
+        if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(__('friends.common_worlds_empty'))}</div>`;
+        return;
+      }
+      if (body) body.innerHTML = items.map(it => `
+        <div class="hist-item" style="display:flex;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border,#e5e7eb)">
+          ${it.imageUrl ? `<img src="${escAttr(it.imageUrl)}" alt="" loading="lazy" style="width:44px;height:44px;border-radius:8px;object-fit:cover;flex:0 0 auto">` : ''}
+          <div style="flex:1;min-width:0">
+            <div class="text-13" style="font-weight:600;word-break:break-all">${esc(it.worldName)}</div>
+            <div class="text-12 text-muted2">${esc((__('friends.common_worlds_detail') || '我 {a} 次 · TA {b} 次').replace('{a}', it.myVisits).replace('{b}', it.theirVisits))}</div>
+          </div>
+        </div>`).join('');
     } catch (e) {
       if (isApiHandledError(e)) return;
       if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(e.message)}</div>`;
@@ -857,6 +978,7 @@
         if (action === 'worldhist') { showFriendWorldHistory(id); return; }
         if (action === 'timeline') { showFriendActivityTimeline(id); return; }
         if (action === 'milestones') { showFriendMilestones(id); return; }
+        if (action === 'commonworlds') { showCommonWorlds(id); return; }
         if (action === 'member-open') {
           const uid = b.dataset.id;
           if (uid && typeof window.openMemberCard === 'function') window.openMemberCard(uid);

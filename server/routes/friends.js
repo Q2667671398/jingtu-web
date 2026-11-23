@@ -1290,6 +1290,194 @@ module.exports = function (notificationService) {
     }
   });
 
+  // ==================== G-04 GET /api/friends/common-worlds/:userId ====================
+  // 共同世界：我与指定好友都去过的世界（world_visit_log 双人交集），
+  // 世界名通过 vrc_worlds_cache 富化（world_name 列实存 world_id）。
+  router.get('/common-worlds/:userId', requireAuth, async (req, res) => {
+    try {
+      const me = req.session.userId;
+      const target = parseInt(req.params.userId);
+      if (!target || isNaN(target) || target === me) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
+      }
+      const pool = getPool();
+      const [rel] = await pool.query(
+        `SELECT id FROM user_friends WHERE user_id = ? AND friend_id = ? AND status = 'accepted'`,
+        [me, target]
+      );
+      if (!rel.length) {
+        return sendError(res, 403, ErrorCodes.FORBIDDEN, '无权查看与该用户的共同世界');
+      }
+      const [urows] = await pool.query(
+        `SELECT id, vrchat_id, vrchat_name FROM users WHERE id IN (?, ?) AND deleted_at IS NULL`, [me, target]
+      );
+      const meRow = urows.find(u => u.id === me);
+      const tRow = urows.find(u => u.id === target);
+      if (!meRow || !tRow) {
+        return res.json({ items: [], total: 0 });
+      }
+      const meIds = [meRow.vrchat_id, meRow.vrchat_name].filter(Boolean);
+      const tIds = [tRow.vrchat_id, tRow.vrchat_name].filter(Boolean);
+      if (!meIds.length || !tIds.length) return res.json({ items: [], total: 0 });
+
+      const mePh = meIds.map(() => '?').join(',');
+      const tPh = tIds.map(() => '?').join(',');
+      // 两侧都访问过的 world_id 交集；聚合双方访问次数
+      const [rows] = await pool.query(
+        `SELECT w.world_id,
+                COALESCE(NULLIF(c.world_name, ''), w.world_name) AS world_name,
+                c.image_url,
+                SUM(CASE WHEN w.vrchat_id IN (${mePh}) THEN w.visit_count ELSE 0 END) AS my_visits,
+                SUM(CASE WHEN w.vrchat_id IN (${tPh}) THEN w.visit_count ELSE 0 END) AS their_visits,
+                MIN(w.first_visit_at) AS first_visit_at,
+                MAX(w.last_visit_at) AS last_visit_at
+         FROM world_visit_log w
+         LEFT JOIN vrc_worlds_cache c ON c.world_id = w.world_id
+         WHERE w.world_id LIKE 'wrld_%'
+           AND w.world_id IN (
+             SELECT world_id FROM world_visit_log WHERE vrchat_id IN (${mePh}) AND world_id LIKE 'wrld_%'
+           )
+           AND w.world_id IN (
+             SELECT world_id FROM world_visit_log WHERE vrchat_id IN (${tPh}) AND world_id LIKE 'wrld_%'
+           )
+         GROUP BY w.world_id, world_name, c.image_url
+         ORDER BY (my_visits + their_visits) DESC
+         LIMIT 50`,
+        [...meIds, ...tIds, ...meIds, ...tIds]
+      );
+
+      // 未命中缓存的异步回填
+      try {
+        const { getCachedWorld } = require('../world_cache');
+        rows
+          .filter(r => r.world_name === r.world_id && /^wrld_[0-9a-fA-F-]+$/i.test(r.world_name))
+          .slice(0, 10)
+          .forEach(r => { getCachedWorld(r.world_id).catch(() => {}); });
+      } catch (e) { /* ignore */ }
+
+      res.json({
+        items: rows.map(r => ({
+          worldId: r.world_id,
+          worldName: r.world_name || r.world_id,
+          imageUrl: r.image_url || '',
+          myVisits: Number(r.my_visits) || 0,
+          theirVisits: Number(r.their_visits) || 0,
+          firstVisitAt: r.first_visit_at,
+          lastVisitAt: r.last_visit_at
+        })),
+        total: rows.length
+      });
+    } catch (e) {
+      handleError(res, e, '[friends/common-worlds]');
+    }
+  });
+
+  // ==================== G-11 GET /api/friends/rewind ====================
+  // 我的年度回顾：聚合本人（含好友视角）的在线时长、常去世界、最长会话等。
+  // 数据源 activity_sessions / world_visit_log / vrc_worlds_cache。
+  router.get('/rewind', requireAuth, async (req, res) => {
+    try {
+      const me = req.session.userId;
+      if (!me) return sendError(res, 403, ErrorCodes.FORBIDDEN, '游客无年度回顾');
+      const year = Math.min(Math.max(parseInt(req.query.year, 10) || new Date().getFullYear(), 2000), 2100);
+      const pool = getPool();
+
+      const [urows] = await pool.query(
+        `SELECT id, display_name, vrchat_id, vrchat_name FROM users WHERE id = ? AND deleted_at IS NULL`, [me]
+      );
+      if (!urows.length) return sendError(res, 404, ErrorCodes.NOT_FOUND, '用户不存在');
+      const myIds = [urows[0].vrchat_id, urows[0].vrchat_name].filter(Boolean);
+      if (!myIds.length) {
+        return res.json({ year, hasData: false, totalMinutes: 0, sessionCount: 0, worldCount: 0, longestSession: null, topWorlds: [] });
+      }
+      const idPh = myIds.map(() => '?').join(',');
+
+      // 1) 总时长 + 会话数
+      const [[agg]] = await pool.query(
+        `SELECT COUNT(*) AS sessions,
+                COALESCE(SUM(CASE WHEN ended_at IS NOT NULL THEN duration_minutes
+                                  ELSE TIMESTAMPDIFF(MINUTE, started_at, NOW()) END), 0) AS minutes
+         FROM activity_sessions
+         WHERE vrchat_id IN (${idPh}) AND YEAR(started_at) = ?`,
+        [...myIds, year]
+      );
+
+      // 2) 最长的一次会话
+      const [longestRows] = await pool.query(
+        `SELECT started_at, ended_at, duration_minutes, world_name
+         FROM activity_sessions
+         WHERE vrchat_id IN (${idPh}) AND YEAR(started_at) = ?
+         ORDER BY (CASE WHEN ended_at IS NOT NULL THEN duration_minutes
+                        ELSE TIMESTAMPDIFF(MINUTE, started_at, NOW()) END) DESC
+         LIMIT 1`,
+        [...myIds, year]
+      );
+
+      // 3) 常去世界 TOP5（该年内有访问的世界，按累计访问次数）
+      const [worldRows] = await pool.query(
+        `SELECT w.world_id,
+                COALESCE(NULLIF(c.world_name, ''), w.world_name) AS world_name,
+                c.image_url, SUM(w.visit_count) AS visits
+         FROM world_visit_log w
+         LEFT JOIN vrc_worlds_cache c ON c.world_id = w.world_id
+         WHERE w.vrchat_id IN (${idPh}) AND w.world_id LIKE 'wrld_%'
+           AND YEAR(w.last_visit_at) = ?
+         GROUP BY w.world_id, world_name, c.image_url
+         ORDER BY visits DESC
+         LIMIT 5`,
+        [...myIds, year]
+      );
+
+      // 4) 活跃天数（该年有会话的不同日期数）
+      const [[dayRow]] = await pool.query(
+        `SELECT COUNT(DISTINCT DATE(started_at)) AS days
+         FROM activity_sessions WHERE vrchat_id IN (${idPh}) AND YEAR(started_at) = ?`,
+        [...myIds, year]
+      );
+
+      // 5) 世界总数（该年去过的不同世界）
+      const [[worldCountRow]] = await pool.query(
+        `SELECT COUNT(DISTINCT world_id) AS worlds
+         FROM world_visit_log WHERE vrchat_id IN (${idPh}) AND world_id LIKE 'wrld_%'
+           AND YEAR(last_visit_at) = ?`,
+        [...myIds, year]
+      );
+
+      // 未命中缓存的世界异步回填
+      try {
+        const { getCachedWorld } = require('../world_cache');
+        worldRows
+          .filter(r => r.world_name === r.world_id && /^wrld_[0-9a-fA-F-]+$/i.test(r.world_name))
+          .forEach(r => { getCachedWorld(r.world_id).catch(() => {}); });
+      } catch (e) { /* ignore */ }
+
+      const totalMinutes = Math.max(0, Math.round(Number(agg.minutes) || 0));
+      const longest = longestRows[0];
+      res.json({
+        year,
+        hasData: (Number(agg.sessions) || 0) > 0,
+        totalMinutes,
+        totalHours: Math.round(totalMinutes / 60 * 10) / 10,
+        sessionCount: Number(agg.sessions) || 0,
+        activeDays: Number(dayRow.days) || 0,
+        worldCount: Number(worldCountRow.worlds) || 0,
+        longestSession: longest ? {
+          startedAt: longest.started_at,
+          minutes: Math.max(0, Math.round(Number(longest.duration_minutes) || 0)),
+          worldName: longest.world_name || ''
+        } : null,
+        topWorlds: worldRows.map(r => ({
+          worldId: r.world_id,
+          worldName: r.world_name || r.world_id,
+          imageUrl: r.image_url || '',
+          visits: Number(r.visits) || 0
+        }))
+      });
+    } catch (e) {
+      handleError(res, e, '[friends/rewind]');
+    }
+  });
+
   // 指定好友的共同好友列表（点开详情）
   router.get('/mutuals/:targetUserId', requireAuth, async (req, res) => {
     try {
