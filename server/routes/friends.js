@@ -1207,6 +1207,49 @@ module.exports = function (notificationService) {
     }
   });
 
+  // ==================== G-02 GET /api/friends/activity-ranking ====================
+  // 好友活跃度榜：按时间窗口聚合在线时长排行（仅统计我的已接受好友）。
+  // 数据源 activity_sessions（vrchat_id 为键），JOIN users + user_friends 限定好友范围。
+  router.get('/activity-ranking', requireAuth, async (req, res) => {
+    try {
+      const me = req.session.userId;
+      const days = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 1), 90);
+      const topN = Math.min(Math.max(parseInt(req.query.top, 10) || 20, 1), 50);
+      const pool = getPool();
+
+      const [rows] = await pool.query(
+        `SELECT u.id AS user_id, u.display_name, u.vrchat_name, u.vrchat_id,
+                u.avatar_type, u.custom_avatar_path, u.vrchat_avatar_url,
+                COUNT(a.id) AS session_count,
+                COALESCE(SUM(CASE WHEN a.ended_at IS NOT NULL THEN a.duration_minutes
+                                  ELSE TIMESTAMPDIFF(MINUTE, a.started_at, NOW()) END), 0) AS total_minutes
+         FROM users u
+         JOIN user_friends f ON f.friend_id = u.id AND f.user_id = ? AND f.status = 'accepted'
+         JOIN activity_sessions a ON a.vrchat_id = u.vrchat_id
+         WHERE u.deleted_at IS NULL AND u.vrchat_id IS NOT NULL AND u.vrchat_id != ''
+           AND (a.started_at >= NOW() - INTERVAL ? DAY OR a.ended_at IS NULL)
+         GROUP BY u.id, u.display_name, u.vrchat_name, u.vrchat_id, u.avatar_type, u.custom_avatar_path, u.vrchat_avatar_url
+         ORDER BY total_minutes DESC, session_count DESC
+         LIMIT ?`,
+        [me, days, topN]
+      );
+
+      res.json({
+        days,
+        items: rows.map((r, i) => ({
+          rank: i + 1,
+          userId: r.user_id,
+          displayName: r.display_name || r.vrchat_name || '',
+          avatarUrl: getAvatarUrl(r) || '/api/avatar/default',
+          sessionCount: Number(r.session_count) || 0,
+          totalMinutes: Math.max(0, Math.round(Number(r.total_minutes) || 0))
+        }))
+      });
+    } catch (e) {
+      handleError(res, e, '[friends/activity-ranking]');
+    }
+  });
+
   // 指定好友的共同好友列表（点开详情）
   router.get('/mutuals/:targetUserId', requireAuth, async (req, res) => {
     try {

@@ -99,6 +99,10 @@
           <div id="friendWorldRanking"><p class="text-muted2 text-13">${__('common.loading')}</p></div>
         </div>
         <div class="social-section">
+          <h3 class="social-h3">⏱️ <span data-i18n="friends.activity_ranking">好友活跃榜（近 30 天）</span></h3>
+          <div id="friendActivityRanking"><p class="text-muted2 text-13">${__('common.loading')}</p></div>
+        </div>
+        <div class="social-section">
           <h3 class="social-h3">${__('friends.blocked_list')}</h3>
           <div id="friendBlocked"></div>
         </div>
@@ -109,6 +113,36 @@
     loadFeed();
     loadBlocked();
     loadWorldRanking();
+    loadActivityRanking();
+  }
+
+  // G-02 好友活跃度榜（近 N 天在线时长）
+  async function loadActivityRanking() {
+    const el = document.getElementById('friendActivityRanking');
+    if (!el) return;
+    try {
+      const res = await api('/api/friends/activity-ranking?days=30&top=10', { method: 'GET' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { el.innerHTML = `<div class="text-muted2 text-13">${esc(errText(d))}</div>`; return; }
+      const items = d.items || [];
+      if (!items.length) { el.innerHTML = `<div class="text-muted2 text-13">${esc(__('friends.activity_ranking_empty'))}</div>`; return; }
+      el.innerHTML = items.map(it => {
+        const h = Math.floor(it.totalMinutes / 60);
+        const m = it.totalMinutes % 60;
+        const dur = h > 0 ? `${h}h ${m}m` : `${m}m`;
+        return `
+        <div class="world-rank-item" data-action="member-open" data-id="${it.userId}" style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb);cursor:pointer">
+          <span class="text-13" style="flex:0 0 24px;font-weight:700;color:var(--accent,#7c5cfc)">#${it.rank}</span>
+          <img src="${escAttr(it.avatarUrl)}" alt="" loading="lazy" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex:0 0 auto">
+          <div style="flex:1;min-width:0">
+            <div class="text-13" style="font-weight:600;word-break:break-all">${esc(it.displayName)}</div>
+            <div class="text-12 text-muted2">${esc((__('friends.activity_rank_detail') || '{t} · {n} 次会话').replace('{t}', dur).replace('{n}', it.sessionCount))}</div>
+          </div>
+        </div>`;
+      }).join('');
+    } catch (e) {
+      if (!isApiHandledError(e)) el.innerHTML = `<div class="text-muted2 text-13">${esc(e.message)}</div>`;
+    }
   }
 
   // G-01 群组世界热度排行
@@ -742,6 +776,11 @@
         if (action === 'worldhist') { showFriendWorldHistory(id); return; }
         if (action === 'timeline') { showFriendActivityTimeline(id); return; }
         if (action === 'milestones') { showFriendMilestones(id); return; }
+        if (action === 'member-open') {
+          const uid = b.dataset.id;
+          if (uid && typeof window.openMemberCard === 'function') window.openMemberCard(uid);
+          return;
+        }
         if (action === 'world-rank-open') {
           const wid = b.dataset.worldId;
           if (wid && typeof window.openWorldSearch === 'function') {
