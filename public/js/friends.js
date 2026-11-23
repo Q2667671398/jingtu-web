@@ -95,6 +95,10 @@
           <div id="friendFeed"></div>
         </div>
         <div class="social-section">
+          <h3 class="social-h3">🏆 <span data-i18n="friends.world_ranking">群组世界热度</span></h3>
+          <div id="friendWorldRanking"><p class="text-muted2 text-13">${__('common.loading')}</p></div>
+        </div>
+        <div class="social-section">
           <h3 class="social-h3">${__('friends.blocked_list')}</h3>
           <div id="friendBlocked"></div>
         </div>
@@ -104,6 +108,31 @@
     loadFriends();
     loadFeed();
     loadBlocked();
+    loadWorldRanking();
+  }
+
+  // G-01 群组世界热度排行
+  async function loadWorldRanking() {
+    const el = document.getElementById('friendWorldRanking');
+    if (!el) return;
+    try {
+      const res = await api('/api/friends/world-ranking?top=10', { method: 'GET' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { el.innerHTML = `<div class="text-muted2 text-13">${esc(errText(d))}</div>`; return; }
+      const items = d.items || [];
+      if (!items.length) { el.innerHTML = `<div class="text-muted2 text-13">${esc(__('friends.world_ranking_empty'))}</div>`; return; }
+      el.innerHTML = items.map(it => `
+        <div class="world-rank-item" data-action="world-rank-open" data-world-id="${escAttr(it.worldId)}" style="display:flex;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border,#e5e7eb);cursor:pointer">
+          <span class="text-13" style="flex:0 0 24px;font-weight:700;color:var(--accent,#7c5cfc)">#${it.rank}</span>
+          ${it.imageUrl ? `<img src="${escAttr(it.imageUrl)}" alt="" loading="lazy" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex:0 0 auto">` : ''}
+          <div style="flex:1;min-width:0">
+            <div class="text-13" style="font-weight:600;word-break:break-all">${esc(it.worldName)}</div>
+            <div class="text-12 text-muted2">${esc((__('friends.world_rank_visits') || '访问 {v} 次 · {u} 人去过').replace('{v}', it.totalVisits).replace('{u}', it.visitorCount))}</div>
+          </div>
+        </div>`).join('');
+    } catch (e) {
+      if (!isApiHandledError(e)) el.innerHTML = `<div class="text-muted2 text-13">${esc(e.message)}</div>`;
+    }
   }
 
   // ==================== 数据加载 ====================
@@ -713,6 +742,18 @@
         if (action === 'worldhist') { showFriendWorldHistory(id); return; }
         if (action === 'timeline') { showFriendActivityTimeline(id); return; }
         if (action === 'milestones') { showFriendMilestones(id); return; }
+        if (action === 'world-rank-open') {
+          const wid = b.dataset.worldId;
+          if (wid && typeof window.openWorldSearch === 'function') {
+            switchTab('vrc');
+            setTimeout(function () {
+              window.openWorldSearch('evt');
+              const box = document.getElementById('worldSearchInput');
+              if (box) { box.value = wid; if (typeof window.doWorldSearch === 'function') window.doWorldSearch(); }
+            }, 160);
+          }
+          return;
+        }
         doAction(action, id);
       });
     }

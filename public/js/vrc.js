@@ -58,6 +58,18 @@ async function fillWorldFriendBadges(worldIds) {
   } catch (e) { /* 非关键，失败静默 */ }
 }
 
+// F-06 增强：查询单个世界的真实名称（group_roster.world_name 存的是 wrld_ ID），
+// 供「选择世界」后的预览/提示显示可读名字而非裸 ID。
+async function resolveWorldName(worldId) {
+  if (!worldId || !/^wrld_/.test(worldId)) return '';
+  try {
+    const res = await api('/api/friends/in-world/' + encodeURIComponent(worldId), { method: 'GET' });
+    if (!res.ok) return '';
+    const d = await res.json().catch(() => ({}));
+    return d.worldName || '';
+  } catch (e) { return ''; }
+}
+
 async function selectWorld(worldId, worldName, worldImageUrl, context) {
   const prefix = context || 'evt';
   const idEl = document.getElementById(`${prefix}WorldId`);

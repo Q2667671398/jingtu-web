@@ -682,14 +682,29 @@ module.exports = function (notificationService) {
       const vrcids = [urows[0].vrchat_id, urows[0].vrchat_name].filter(Boolean);
       const idPh = vrcids.map(() => '?').join(',');
 
-      // 足迹聚合：按 world_id 去重，返回访问次数与首次/最近访问时间，按最近访问倒序
+      // 足迹聚合：LEFT JOIN vrc_worlds_cache 富化真实世界名（world_visit_log.world_name 实存 world_id）
       const [items] = await pool.query(
-        `SELECT world_id, world_name, visit_count, first_visit_at, last_visit_at
-         FROM world_visit_log WHERE vrchat_id IN (${idPh})
-         ORDER BY last_visit_at DESC, visit_count DESC
+        `SELECT w.world_id, COALESCE(NULLIF(c.world_name,''), w.world_name) AS world_name,
+                w.visit_count, w.first_visit_at, w.last_visit_at
+         FROM world_visit_log w
+         LEFT JOIN vrc_worlds_cache c ON c.world_id = w.world_id
+         WHERE w.vrchat_id IN (${idPh})
+         ORDER BY w.last_visit_at DESC, w.visit_count DESC
          LIMIT 100`,
         vrcids
       );
+
+      // 缓存未命中的世界（仍是裸 wrld_ ID 且验证格式）→ 异步回填，不阻塞本次响应
+      try {
+        const missing = items
+          .filter(it => /^wrld_[0-9a-fA-F-]+$/i.test(it.world_name || '') && it.world_id === it.world_name)
+          .map(it => it.world_id)
+          .slice(0, 10);
+        if (missing.length) {
+          const { getCachedWorld } = require('../world_cache');
+          missing.forEach(id => { getCachedWorld(id).catch(() => {}); });
+        }
+      } catch (e) { /* 回填失败不影响响应 */ }
 
       const [cntRows] = await pool.query(
         `SELECT COUNT(*) AS c, COALESCE(SUM(visit_count),0) AS visits FROM world_visit_log WHERE vrchat_id IN (${idPh})`,
@@ -1052,6 +1067,19 @@ module.exports = function (notificationService) {
         [me, worldId, worldId, worldId]
       );
 
+      // 富化世界名（group_roster.world_name 实存 world_id）：查缓存，未命中则异步回填
+      let worldName = '';
+      try {
+        const [wc] = await pool.query(
+          `SELECT world_name FROM vrc_worlds_cache WHERE world_id = ? AND world_name != '' LIMIT 1`, [worldId]
+        );
+        if (wc.length && wc[0].world_name) worldName = wc[0].world_name;
+        else {
+          const { getCachedWorld } = require('../world_cache');
+          getCachedWorld(worldId).catch(() => {});
+        }
+      } catch (e) { /* 富化失败不影响主响应 */ }
+
       // 解析实例信息：type（public/friends+/hidden/private）+ region
       const parseInstance = (loc) => {
         if (!loc || loc === 'private') return { instanceType: 'private', region: '', instanceId: '' };
@@ -1093,6 +1121,7 @@ module.exports = function (notificationService) {
 
       res.json({
         worldId,
+        worldName,   // 真实世界名（缓存未命中时为空，前端可回退显示 ID）
         friendCount: friends.length,
         friends,
         instances: Object.values(byInstance).sort((a, b) => b.count - a.count)
@@ -1129,6 +1158,52 @@ module.exports = function (notificationService) {
       res.json({ counts });
     } catch (e) {
       handleError(res, e, '[friends/in-worlds]');
+    }
+  });
+
+  // ==================== G-01 GET /api/friends/world-ranking ====================
+  // 群组世界热度排行：全体成员最常去的世界（访问次数 + 去过的成员数），
+  // 世界名通过 vrc_worlds_cache 富化（world_visit_log.world_name 实存 world_id）。
+  router.get('/world-ranking', requireAuth, async (req, res) => {
+    try {
+      // 取前 N 名（top，非分页参数，避免与 paginate 守卫冲突）
+      const topN = Math.min(Math.max(parseInt(req.query.top, 10) || 20, 1), 50);
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT w.world_id,
+                COALESCE(NULLIF(c.world_name, ''), w.world_name) AS world_name,
+                c.image_url,
+                SUM(w.visit_count) AS total_visits,
+                COUNT(DISTINCT w.vrchat_id) AS visitor_count
+         FROM world_visit_log w
+         LEFT JOIN vrc_worlds_cache c ON c.world_id = w.world_id
+         WHERE w.world_id LIKE 'wrld_%'
+         GROUP BY w.world_id, world_name, c.image_url
+         ORDER BY total_visits DESC, visitor_count DESC
+         LIMIT ?`,
+        [topN]
+      );
+      // 缓存未命中的世界异步回填真实名称（不阻塞响应）
+      try {
+        const { getCachedWorld } = require('../world_cache');
+        rows
+          .filter(r => /^wrld_[0-9a-fA-F-]+$/i.test(r.world_name || '') && r.world_name === r.world_id)
+          .slice(0, 10)
+          .forEach(r => { getCachedWorld(r.world_id).catch(() => {}); });
+      } catch (e) { /* 回填失败不影响响应 */ }
+
+      res.json({
+        items: rows.map((r, i) => ({
+          rank: i + 1,
+          worldId: r.world_id,
+          worldName: r.world_name || r.world_id,
+          imageUrl: r.image_url || '',
+          totalVisits: Number(r.total_visits) || 0,
+          visitorCount: Number(r.visitor_count) || 0
+        }))
+      });
+    } catch (e) {
+      handleError(res, e, '[friends/world-ranking]');
     }
   });
 
