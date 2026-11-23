@@ -300,6 +300,7 @@ window._LANG_ZH = {
   "ui.add": "添加",
   "ui.edit": "编辑",
   "ui.delete": "删除",
+  "ui.go_handle": "去处理",
   "ui.cancel": "取消",
   "ui.ok": "确定",
   "ui.error": "错误",

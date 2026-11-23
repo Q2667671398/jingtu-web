@@ -260,6 +260,7 @@ window._LANG_DE = {
   "ui.add": "Hinzufügen",
   "ui.edit": "Bearbeiten",
   "ui.delete": "Löschen",
+  "ui.go_handle": "Bearbeiten",
   "ui.cancel": "Abbrechen",
   "ui.ok": "OK",
   "ui.error": "Fehler",

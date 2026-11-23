@@ -220,6 +220,7 @@ window._LANG_RU = {
   "ui.add": "Добавить",
   "ui.edit": "Редактировать",
   "ui.delete": "Удалить",
+  "ui.go_handle": "Обработать",
   "ui.cancel": "Отмена",
   "ui.ok": "ОК",
   "ui.error": "Ошибка",

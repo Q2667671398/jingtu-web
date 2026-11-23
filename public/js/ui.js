@@ -629,7 +629,14 @@ async function loadNotifications(reset, skipVrcSync) {
         });
         if (centerEmpty) centerEmpty.classList.toggle('d-none', notifs.length > 0);
       }
-      const html = notifs.map(n => `
+      const html = notifs.map(n => {
+        // F-13：好友请求类通知提供「去处理」快捷入口（好友请求统一在好友页操作，避免重复实现）
+        const t = String(n.type || '').toLowerCase();
+        const isFriendReq = t.indexOf('friend') !== -1 || String(n.targetType || '') === 'friend_request';
+        const quickBtn = isFriendReq
+          ? `<button class="btn btn-sm btn-accent ni-quick" data-notif-goto="friends">${esc(__('ui.go_handle') || '去处理')}</button>`
+          : '';
+        return `
         <div class="notification-item ${n.isRead ? '' : 'unread'}">
           <div class="ni-main" data-notif-id="${escAttr(String(n.id))}">
             <div class="ni-icon">${getNotifIcon(n.type)}</div>
@@ -640,9 +647,11 @@ async function loadNotifications(reset, skipVrcSync) {
             </div>
             ${n.isRead ? '' : '<div class="ni-dot"></div>'}
           </div>
+          ${quickBtn}
           <button class="ni-del" data-notif-id="${escAttr(String(n.id))}" title="${__('ui.delete')}">✕</button>
         </div>
-      `).join('');
+      `;
+      }).join('');
       if (reset) {
         boxes.forEach(b => {
           b.innerHTML = '';
@@ -685,6 +694,13 @@ document.addEventListener('click', function (e) {
   if (!e.target || !e.target.closest) return;
   const loadMore = e.target.closest('.notif-load-more[data-load-more]');
   if (loadMore) { notifLoadMore(); return; }
+  const goto = e.target.closest('[data-notif-goto]');
+  if (goto) {
+    e.stopPropagation();
+    const tab = goto.dataset.notifGoto;
+    if (typeof window.switchTab === 'function') window.switchTab(tab, true);
+    return;
+  }
   const del = e.target.closest('.ni-del[data-notif-id]');
   if (del) { e.stopPropagation(); deleteNotification(del.dataset.notifId); return; }
   const main = e.target.closest('.ni-main[data-notif-id]');

@@ -260,6 +260,7 @@ window._LANG_JA = {
   "ui.add": "追加",
   "ui.edit": "編集",
   "ui.delete": "削除",
+  "ui.go_handle": "対応する",
   "ui.cancel": "キャンセル",
   "ui.ok": "OK",
   "ui.error": "エラー",

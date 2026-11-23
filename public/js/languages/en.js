@@ -249,6 +249,7 @@ window._LANG_EN = {
   "ui.add": "Add",
   "ui.edit": "Edit",
   "ui.delete": "Delete",
+  "ui.go_handle": "Handle",
   "ui.cancel": "Cancel",
   "ui.ok": "OK",
   "ui.error": "Error",
