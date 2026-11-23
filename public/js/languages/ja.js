@@ -3556,6 +3556,8 @@ window._LANG_JA = {
   "modal.members_only_opt": "🔒 メンバー限定",
   "modal.members_only_plain_opt": "メンバーのみ",
   "modal.motto_label": "ひとこと",
+  "modal.pronouns_label": "代名詞",
+  "modal.pronouns_ph": "例: she/her、they/them",
   "modal.name_change_title": "✏️ 名前変更を申請",
   "modal.name_review_title": "📋 名前変更の審査",
   "modal.nc_current_label": "現在の名前",

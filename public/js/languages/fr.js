@@ -3556,6 +3556,8 @@ window._LANG_FR = {
   "modal.members_only_opt": "🔒 Réservé aux membres",
   "modal.members_only_plain_opt": "Réservé aux membres",
   "modal.motto_label": "Devise",
+  "modal.pronouns_label": "Pronoms",
+  "modal.pronouns_ph": "ex. she/her, they/them",
   "modal.name_change_title": "✏️ Demander un changement de nom",
   "modal.name_review_title": "📋 Examen des changements de nom",
   "modal.nc_current_label": "Nom actuel",

@@ -3556,6 +3556,8 @@ window._LANG_DE = {
   "modal.members_only_opt": "🔒 Nur Mitglieder",
   "modal.members_only_plain_opt": "Nur Mitglieder",
   "modal.motto_label": "Motto",
+  "modal.pronouns_label": "Pronomen",
+  "modal.pronouns_ph": "z. B. she/her, they/them",
   "modal.name_change_title": "✏️ Namensänderung beantragen",
   "modal.name_review_title": "📋 Namensänderungsprüfung",
   "modal.nc_current_label": "Aktueller Name",

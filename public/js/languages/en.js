@@ -3558,6 +3558,8 @@ window._LANG_EN = {
   "modal.members_only_opt": "🔒 Members Only",
   "modal.members_only_plain_opt": "Members only",
   "modal.motto_label": "Motto",
+  "modal.pronouns_label": "Pronouns",
+  "modal.pronouns_ph": "e.g. she/her, they/them",
   "modal.name_change_title": "✏️ Request Name Change",
   "modal.name_review_title": "📋 Name Change Review",
   "modal.nc_current_label": "Current Name",

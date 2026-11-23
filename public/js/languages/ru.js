@@ -3556,6 +3556,8 @@ window._LANG_RU = {
   "modal.members_only_opt": "🔒 Только для участников",
   "modal.members_only_plain_opt": "Только для участников",
   "modal.motto_label": "Девиз",
+  "modal.pronouns_label": "Местоимения",
+  "modal.pronouns_ph": "напр. she/her, they/them",
   "modal.name_change_title": "✏️ Запрос на смену имени",
   "modal.name_review_title": "📋 Проверка смены имени",
   "modal.nc_current_label": "Текущее имя",

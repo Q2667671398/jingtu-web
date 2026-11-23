@@ -3571,6 +3571,8 @@ window._LANG_ZH = {
   "modal.members_only_opt": "🔒 成员专属",
   "modal.members_only_plain_opt": "仅成员",
   "modal.motto_label": "个性签名",
+  "modal.pronouns_label": "代词",
+  "modal.pronouns_ph": "如 she/her、they/them",
   "modal.name_change_title": "✏️ 申请改名",
   "modal.name_review_title": "📋 改名审核",
   "modal.nc_current_label": "当前名称",

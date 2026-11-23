@@ -250,6 +250,7 @@ router.get('/me/profile', requireAuth, async (req, res) => {
       preferences: u.preferences,
       bio: u.preferences?.bio || '',
       motto: u.preferences?.motto || '',
+      pronouns: u.preferences?.pronouns || '',
       website: u.preferences?.website || '',
       coverImage: u.preferences?.coverImage || '',
       // 用户单独的网站背景图（登录后整站背景，个人主页/成员详情同步展示）
@@ -276,7 +277,7 @@ router.put('/me/profile', requireAuth, async (req, res) => {
     if (req.session.userId === 0) {
       return sendError(res, 403, ErrorCodes.FORBIDDEN, '游客不能修改资料');
     }
-    const { displayName, qq, birthday, location, preferences, bio, motto, website, socialLinks, coverImage, coverPosition, backgroundImage, selfTags, tagsVisible, theme } = req.body;
+    const { displayName, qq, birthday, location, preferences, bio, motto, pronouns, website, socialLinks, coverImage, coverPosition, backgroundImage, selfTags, tagsVisible, theme } = req.body;
     const updates = {};
 
     if (displayName !== undefined) {
@@ -323,6 +324,11 @@ router.put('/me/profile', requireAuth, async (req, res) => {
     if (motto !== undefined) {
       if (typeof motto !== 'string' || motto.length > 100) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '个性签名不能超过100字');
       prefsObj.motto = motto;
+    }
+    // F-14: pronouns 代词（自由文本，如 she/her、they/them），存 preferences.pronouns
+    if (pronouns !== undefined) {
+      if (typeof pronouns !== 'string' || pronouns.length > 50) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '代词不能超过50字');
+      prefsObj.pronouns = pronouns;
     }
     // V6.10: website 存到 preferences.website
     if (website !== undefined) {

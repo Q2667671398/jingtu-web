@@ -177,10 +177,12 @@ function renderProfileHeader(user, isOwner) {
     }
   }
 
-  // 个性签名
+  // 个性签名（F-14：有代词时附在签名后显示）
   const mottoEl = document.getElementById('profileMotto');
   if (mottoEl) {
-    mottoEl.textContent = user.motto || user.preferences?.motto || '';
+    const mottoText = user.motto || user.preferences?.motto || '';
+    const pronounsText = user.pronouns || user.preferences?.pronouns || '';
+    mottoEl.textContent = mottoText + (pronounsText ? (mottoText ? ' · ' : '') + pronounsText : '');
   }
 
   // 自定义标签（后端已按隐私开关过滤：他人仅在 tags_visible 开启时返回）
@@ -551,6 +553,9 @@ function openVideo(videoId) {
 function showEditProfileModal() {
   if (!profileUser) return;
   document.getElementById('editMotto').value = profileUser.motto || profileUser.preferences?.motto || '';
+  // F-14: 代词（自由文本）
+  var pronounsEl = document.getElementById('editPronouns');
+  if (pronounsEl) pronounsEl.value = profileUser.pronouns || profileUser.preferences?.pronouns || '';
   document.getElementById('editBio').value = profileUser.bio || '';
   document.getElementById('editLocation').value = profileUser.location || '';
   document.getElementById('editWebsite').value = profileUser.website || profileUser.preferences?.website || '';
@@ -658,6 +663,7 @@ async function uploadProfileAvatar(file) {
 
 async function saveEditProfile() {
   const motto = document.getElementById('editMotto')?.value?.trim();
+  const pronouns = document.getElementById('editPronouns')?.value?.trim();
   const bio = document.getElementById('editBio')?.value?.trim();
   const location = document.getElementById('editLocation')?.value?.trim();
   const website = document.getElementById('editWebsite')?.value?.trim();
@@ -670,6 +676,7 @@ async function saveEditProfile() {
 
   const body = {};
   if (motto !== undefined) { body.motto = motto; }
+  if (pronouns !== undefined) { body.pronouns = pronouns; }
   if (bio !== undefined) { body.bio = bio; }
   if (location !== undefined) { body.location = location; }
   if (coverImage !== undefined) { body.coverImage = coverImage; }
@@ -693,6 +700,7 @@ async function saveEditProfile() {
       toast(__('profile_page.profile_updated'), 'success');
       // 更新本地缓存
       if (motto !== undefined) { profileUser.motto = motto; if (!profileUser.preferences) profileUser.preferences = {}; profileUser.preferences.motto = motto; }
+      if (pronouns !== undefined) { profileUser.pronouns = pronouns; if (!profileUser.preferences) profileUser.preferences = {}; profileUser.preferences.pronouns = pronouns; }
       if (bio !== undefined) profileUser.bio = bio;
       if (location !== undefined) profileUser.location = location;
       if (coverImage !== undefined) { profileUser.coverImage = coverImage; if (!profileUser.preferences) profileUser.preferences = {}; profileUser.preferences.coverImage = coverImage; }
