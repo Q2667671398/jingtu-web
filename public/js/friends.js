@@ -162,6 +162,7 @@
         btn('history', r.id, __('friends.history'), 'btn-ghost') +
         btn('worldhist', r.id, __('friends.world_history'), 'btn-ghost') +
         btn('timeline', r.id, __('friends.activity_timeline'), 'btn-ghost') +
+        btn('milestones', r.id, __('friends.milestones'), 'btn-ghost') +
         btn('message', r.id, __('chat.dm'), 'btn-outline') +
         btn('block', r.id, __('friends.block'), 'btn-outline') +
         btn('remove', r.id, __('friends.remove'), 'btn-danger')
@@ -463,6 +464,76 @@
     }
   }
 
+  // ==================== F-05 友谊里程碑 ====================
+  let _milestonesModalReady = false;
+  function ensureMilestonesModal() {
+    if (_milestonesModalReady && document.getElementById('friendMilestonesModal')) return;
+    const el = document.createElement('div');
+    el.className = 'modal';
+    el.id = 'friendMilestonesModal';
+    el.style.display = 'none';
+    el.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="friendMilestonesTitle" class="modal-title"></h3>
+          <button class="modal-close" data-modal-close="friendMilestonesModal" aria-label="close">&times;</button>
+        </div>
+        <div class="modal-body" id="friendMilestonesBody"></div>
+      </div>`;
+    document.body.appendChild(el);
+    _milestonesModalReady = true;
+  }
+
+  const MILESTONE_META = {
+    first_meet: { icon: '🌟', key: 'friends.ms_first_meet', fallback: '初次相遇' },
+    reunion: { icon: '🤗', key: 'friends.ms_reunion', fallback: '再次重逢' },
+    world_change: { icon: '🌐', key: 'friends.ms_world_change', fallback: '一起换到新世界' }
+  };
+
+  async function showFriendMilestones(id) {
+    ensureMilestonesModal();
+    const title = document.getElementById('friendMilestonesTitle');
+    const body = document.getElementById('friendMilestonesBody');
+    if (title) title.textContent = __('friends.milestones_title');
+    if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(__('common.loading') || '加载中…')}</div>`;
+    showModal('friendMilestonesModal');
+    try {
+      const res = await api('/api/friends/milestones/' + id, { method: 'GET' });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(errText(d))}</div>`; return; }
+      const ms = d.milestones || [];
+      if (!ms.length) {
+        if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(__('friends.ms_empty'))}</div>`;
+        return;
+      }
+      const head = `
+        <div class="text-13 text-muted2" style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap">
+          <span class="badge badge-outline">${esc((__('friends.ms_sessions') || '见面 {n} 次').replace('{n}', d.totalSessions || 0))}</span>
+          <span class="badge badge-outline">${esc((__('friends.ms_span') || '跨越 {n} 天').replace('{n}', d.spanDays || 0))}</span>
+        </div>`;
+      const list = ms.map(m => {
+        const meta = MILESTONE_META[m.type] || { icon: '•', key: '', fallback: m.type };
+        const label = meta.key ? (__(meta.key) || meta.fallback) : meta.fallback;
+        let detail = m.detail || '';
+        if (m.type === 'world_change' && m.from) detail = `${m.from} → ${detail}`;
+        if (m.type === 'reunion' && m.gapDays) detail = `${detail} · ${(m.gapDays)}天`;
+        return `
+          <div class="hist-item" style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border,#e5e7eb)">
+            <span style="flex:0 0 auto;font-size:16px">${meta.icon}</span>
+            <div style="flex:1;min-width:0">
+              <div class="text-13" style="font-weight:600">${esc(label)}</div>
+              <div class="text-12 text-muted2" style="word-break:break-all">${esc(detail)}</div>
+            </div>
+            <span class="text-12 text-muted2" style="flex:0 0 auto">${esc(fmtDate(m.time))}</span>
+          </div>`;
+      }).join('');
+      if (body) body.innerHTML = head + list;
+    } catch (e) {
+      if (isApiHandledError(e)) return;
+      if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(e.message)}</div>`;
+    }
+  }
+
   // ==================== F-21 在线活动时间轴 ====================
   let _actTimelineModalReady = false;
   function ensureActTimelineModal() {
@@ -641,6 +712,7 @@
         if (action === 'history') { showFriendHistory(id); return; }
         if (action === 'worldhist') { showFriendWorldHistory(id); return; }
         if (action === 'timeline') { showFriendActivityTimeline(id); return; }
+        if (action === 'milestones') { showFriendMilestones(id); return; }
         doAction(action, id);
       });
     }

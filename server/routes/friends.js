@@ -943,6 +943,88 @@ module.exports = function (notificationService) {
     }
   });
 
+  // ==================== F-05 GET /api/friends/milestones/:userId ====================
+  // 友谊里程碑：把在线会话聚合成带语义的时间线（初识 / 重逢 / 换世界）。
+  // 数据源 activity_sessions（vrchat_id 为键，已验证与 users.vrchat_id 同源）。
+  router.get('/milestones/:userId', requireAuth, async (req, res) => {
+    try {
+      const me = req.session.userId;
+      const target = parseInt(req.params.userId);
+      if (!target || isNaN(target) || target === me) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
+      }
+      const pool = getPool();
+      // 越权校验：仅本人或已接受好友
+      const [rel] = await pool.query(
+        `SELECT id FROM user_friends WHERE user_id = ? AND friend_id = ? AND status = 'accepted'`,
+        [me, target]
+      );
+      if (!rel.length) {
+        return sendError(res, 403, ErrorCodes.FORBIDDEN, '无权查看该用户的里程碑');
+      }
+      const [urows] = await pool.query(
+        `SELECT vrchat_name, vrchat_id FROM users WHERE id = ? AND deleted_at IS NULL`, [target]
+      );
+      if (!urows.length || (!urows[0].vrchat_id && !urows[0].vrchat_name)) {
+        return res.json({ firstMet: null, milestones: [], totalSessions: 0, spanDays: 0 });
+      }
+      const vrcids = [urows[0].vrchat_id, urows[0].vrchat_name].filter(Boolean);
+      const idPh = vrcids.map(() => '?').join(',');
+
+      const [rows] = await pool.query(
+        `SELECT started_at, ended_at, duration_minutes, world_name, world_id
+         FROM activity_sessions WHERE vrchat_id IN (${idPh})
+         ORDER BY started_at ASC LIMIT 2000`, vrcids
+      );
+      if (!rows.length) {
+        return res.json({ firstMet: null, milestones: [], totalSessions: 0, spanDays: 0 });
+      }
+
+      const REUNION_GAP_MS = 7 * 24 * 3600 * 1000; // 间隔 ≥7 天视为「重逢」
+      const milestones = [];
+      let prev = null;
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
+        const t = new Date(r.started_at).getTime();
+        if (i === 0) {
+          milestones.push({ type: 'first_meet', time: r.started_at, detail: r.world_name || '' });
+        } else {
+          const gap = t - new Date(prev.started_at).getTime();
+          if (gap >= REUNION_GAP_MS) {
+            milestones.push({ type: 'reunion', time: r.started_at, detail: r.world_name || '', gapDays: Math.round(gap / 86400000) });
+          } else if (r.world_name && prev.world_name && r.world_name !== prev.world_name) {
+            milestones.push({ type: 'world_change', time: r.started_at, detail: r.world_name, from: prev.world_name });
+          }
+        }
+        prev = r;
+      }
+      // 里程碑过多时保留首尾与重逢/换世界（限制 200 条防刷屏）
+      const trimmed = milestones.length > 200 ? milestones.slice(0, 1).concat(milestones.slice(-199)) : milestones;
+
+      const first = rows[0];
+      const last = rows[rows.length - 1];
+      const spanDays = Math.max(0, Math.round(
+        (new Date(last.started_at).getTime() - new Date(first.started_at).getTime()) / 86400000
+      ));
+
+      res.json({
+        firstMet: first ? { time: first.started_at, worldName: first.world_name || '' } : null,
+        lastSeen: last ? { time: last.started_at, worldName: last.world_name || '' } : null,
+        totalSessions: rows.length,
+        spanDays,
+        milestones: trimmed.map(m => ({
+          type: m.type,
+          time: m.time,
+          detail: m.detail || '',
+          from: m.from || '',
+          gapDays: m.gapDays || 0
+        }))
+      });
+    } catch (e) {
+      handleError(res, e, '[friends/milestones]');
+    }
+  });
+
   // 指定好友的共同好友列表（点开详情）
   router.get('/mutuals/:targetUserId', requireAuth, async (req, res) => {
     try {
