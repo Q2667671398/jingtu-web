@@ -146,8 +146,14 @@
       actionBtns.push(`<button class="coll-card-btn" data-act="copyid" data-id="${esc(it.target_id)}">📄 ${__('common.copy')}</button>`);
     }
 
-    return `<div class="coll-card status-${statusClass}" data-id="${it.id}">
-      <div class="coll-card-thumb${it.kind === 'world' ? ' coll-card-thumb--landscape' : ''}" style="background-image:url(${escCssUrl(thumb)})"></div>
+    // G-15：18+ 内容封面默认模糊，悬停（桌面）或点击（触屏）后显现
+    const isAdult = it.content_rating === '18+';
+    const thumbClass = `coll-card-thumb${it.kind === 'world' ? ' coll-card-thumb--landscape' : ''}${isAdult ? ' coll-thumb-blurred' : ''}`;
+    const adultTip = isAdult
+      ? `<span class="coll-blur-tip">${esc(__('collections.adult_blur_tip') || '18+ 内容，点击查看')}</span>`
+      : '';
+    return `<div class="coll-card status-${statusClass}" data-id="${it.id}"${isAdult ? ' data-adult="1"' : ''}>
+      <div class="${thumbClass}" style="background-image:url(${escCssUrl(thumb)})">${adultTip}</div>
       <div class="coll-card-body">
         <div class="coll-card-title">${esc(it.name || it.target_id)}</div>
         <div class="coll-card-author">${esc(it.author || '')}</div>
@@ -172,7 +178,12 @@
           handleCardAction(act, id, e);
         });
       });
-      card.addEventListener('click', () => openDetail(id));
+      card.addEventListener('click', () => {
+        // G-15：18+ 卡片首次点击先解除模糊，再次点击才进详情（触屏无 hover）
+        const thumb = card.querySelector('.coll-thumb-blurred');
+        if (thumb) { thumb.classList.remove('coll-thumb-blurred'); return; }
+        openDetail(id);
+      });
     });
   }
 

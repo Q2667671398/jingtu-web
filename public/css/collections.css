@@ -323,3 +323,26 @@
   .mc-filter-sm { min-width: 100px; flex: 1 1 45%; }
 }
 
+
+/* G-15 收藏馆 18+ 封面默认模糊（桌面悬停显现，触屏点击显现） */
+.coll-card .coll-thumb-blurred {
+  filter: blur(14px);
+  transform: scale(1.02);
+  transition: filter .22s ease;
+}
+.coll-card:hover .coll-thumb-blurred { filter: blur(0); }
+.coll-blur-tip {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, .35);
+  text-align: center;
+  padding: 4px;
+  pointer-events: none;
+}
+.coll-card:hover .coll-blur-tip { display: none; }

@@ -575,7 +575,10 @@
         if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(__('friends.hist_empty'))}</div>`;
         return;
       }
-      if (body) body.innerHTML = items.map(r => {
+      if (body) body.innerHTML = `
+        <div class="flex-row gap-8 align-center" style="margin-bottom:8px">
+          <button type="button" class="btn btn-sm btn-outline" id="friendHistExport" style="margin-left:auto">${esc(__('friends.export_csv') || '导出 CSV')}</button>
+        </div>` + items.map(r => {
         const t = fmtTime(r.time);
         return `
           <div class="hist-item" style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border,#e5e7eb);">
@@ -588,6 +591,8 @@
             </div>
           </div>`;
       }).join('');
+      const expBtn = document.getElementById('friendHistExport');
+      if (expBtn) expBtn.addEventListener('click', () => exportFriendsCsv('history', id));
     } catch (e) {
       if (isApiHandledError(e)) return;
       if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(e.message)}</div>`;
@@ -668,14 +673,38 @@
             <option value="visits">${esc(__('friends.world_sort_visits'))}</option>
             <option value="first">${esc(__('friends.world_sort_first'))}</option>
           </select>
+          <button type="button" class="btn btn-sm btn-outline" id="worldHistExport">${esc(__('friends.export_csv') || '导出 CSV')}</button>
         </div>
         <div id="worldHistList"></div>`;
       renderWorldHist('recent');
       const sortEl = document.getElementById('worldHistSort');
       if (sortEl) sortEl.addEventListener('change', () => renderWorldHist(sortEl.value));
+      const expBtn = document.getElementById('worldHistExport');
+      if (expBtn) expBtn.addEventListener('click', () => exportFriendsCsv('worlds', id));
     } catch (e) {
       if (isApiHandledError(e)) return;
       if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(e.message)}</div>`;
+    }
+  }
+
+  // G-12 历史流水 CSV 导出
+  async function exportFriendsCsv(type, userId) {
+    try {
+      const q = `?type=${encodeURIComponent(type)}` + (userId ? `&userId=${userId}` : '');
+      const res = await api('/api/friends/export-csv' + q, { method: 'GET' });
+      if (!res.ok) { toast(__('friends.export_failed') || '导出失败', 'error'); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `friends_${type}_${Date.now()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      toast(__('friends.export_ok') || '已开始下载', 'success');
+    } catch (e) {
+      if (!isApiHandledError(e)) toast(e.message, 'error');
     }
   }
 
@@ -835,6 +864,26 @@
     }
     const max = Math.max(1, ...grid.flat());
     const wdLabels = ['日', '一', '二', '三', '四', '五', '六'];
+    // G-14 峰值统计：找出最活跃的「星期×小时」组合与最活跃星期/小时
+    let peakVal = 0, peakWd = -1, peakHr = -1;
+    const wdTotals = new Array(7).fill(0);
+    const hrTotals = new Array(24).fill(0);
+    for (let wd = 0; wd < 7; wd++) {
+      for (let hr = 0; hr < 24; hr++) {
+        const v = grid[wd][hr];
+        wdTotals[wd] += v;
+        hrTotals[hr] += v;
+        if (v > peakVal) { peakVal = v; peakWd = wd; peakHr = hr; }
+      }
+    }
+    const topWd = wdTotals.indexOf(Math.max(...wdTotals));
+    const topHr = hrTotals.indexOf(Math.max(...hrTotals));
+    const peakLine = peakVal > 0
+      ? `<div class="text-12 text-muted2" style="margin-bottom:6px">
+           ${esc((__('friends.heatmap_peak') || '峰值：周{wd} {hr}:00 · {m} 分钟').replace('{wd}', wdLabels[peakWd]).replace('{hr}', String(peakHr).padStart(2, '0')).replace('{m}', peakVal))}
+           <br>${esc((__('friends.heatmap_top') || '最活跃：周{wd} · {hr} 点时段').replace('{wd}', wdLabels[topWd]).replace('{hr}', topHr))}
+         </div>`
+      : '';
     let rows = '';
     for (let wd = 0; wd < 7; wd++) {
       let cells = '';
@@ -849,6 +898,7 @@
     const hours = `<div class="act-heat-row act-heat-hours"><span class="act-heat-label"></span>${Array.from({ length: 24 }, (_, h) => `<span class="act-heat-hour">${h % 3 === 0 ? h : ''}</span>`).join('')}</div>`;
     return `<div class="act-heatmap" style="margin:10px 0 14px;">
       <div class="text-12 text-muted2" style="margin-bottom:6px;">${esc(__('friends.activity_heatmap_title') || '活跃时段分布')}</div>
+      ${peakLine}
       ${hours}${rows}
     </div>`;
   }
@@ -885,6 +935,7 @@
       if (body) body.innerHTML = `
         <div class="text-13 text-muted2" style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <span>${esc(summary)}</span>${onlineBadge}${togetherBadge}
+          <button type="button" class="btn btn-sm btn-outline" id="actTimelineExport" style="margin-left:auto">${esc(__('friends.export_csv') || '导出 CSV')}</button>
         </div>
         ${renderActivityHeatmap(items)}
         ${items.map(r => {
@@ -912,6 +963,8 @@
               </div>
             </div>`;
         }).join('')}`;
+      const expBtn = document.getElementById('actTimelineExport');
+      if (expBtn) expBtn.addEventListener('click', () => exportFriendsCsv('sessions', id));
     } catch (e) {
       if (isApiHandledError(e)) return;
       if (body) body.innerHTML = `<div class="text-muted2 p-16">${esc(e.message)}</div>`;

@@ -1478,6 +1478,70 @@ module.exports = function (notificationService) {
     }
   });
 
+  // ==================== G-12 GET /api/friends/export-csv?type=&userId= ====================
+  // 历史流水 CSV 导出：type=history(好友变更) | worlds(世界足迹) | sessions(在线会话)
+  // 仅导出本人或已接受好友的数据；字段经 csvField 转义防 CSV 注入。
+  router.get('/export-csv', requireAuth, async (req, res) => {
+    try {
+      const me = req.session.userId;
+      const target = parseInt(req.query.userId, 10) || me;
+      const type = ['history', 'worlds', 'sessions'].includes(req.query.type) ? req.query.type : 'sessions';
+      if (!target || isNaN(target)) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
+      const pool = getPool();
+      if (target !== me) {
+        const [rel] = await pool.query(
+          `SELECT id FROM user_friends WHERE user_id = ? AND friend_id = ? AND status = 'accepted'`, [me, target]
+        );
+        if (!rel.length) return sendError(res, 403, ErrorCodes.FORBIDDEN, '无权导出该用户数据');
+      }
+      const [urows] = await pool.query(
+        `SELECT vrchat_id, vrchat_name FROM users WHERE id = ? AND deleted_at IS NULL`, [target]
+      );
+      if (!urows.length) return sendError(res, 404, ErrorCodes.NOT_FOUND, '用户不存在');
+      const vrcids = [urows[0].vrchat_id, urows[0].vrchat_name].filter(Boolean);
+      if (!vrcids.length) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '该用户未绑定 VRChat');
+      const idPh = vrcids.map(() => '?').join(',');
+      const { csvField } = require('./user-data-helper');
+
+      let header, lines;
+      if (type === 'history') {
+        const [rows] = await pool.query(
+          `SELECT change_type, old_value, new_value, created_at FROM friend_log
+           WHERE vrchat_id IN (${idPh}) ORDER BY created_at DESC LIMIT 5000`, vrcids
+        );
+        header = ['变更类型', '旧值', '新值', '时间'];
+        lines = rows.map(r => [r.change_type, r.old_value, r.new_value, r.created_at]);
+      } else if (type === 'worlds') {
+        const [rows] = await pool.query(
+          `SELECT w.world_id, COALESCE(NULLIF(c.world_name,''), w.world_name) AS world_name,
+                  w.visit_count, w.first_visit_at, w.last_visit_at
+           FROM world_visit_log w LEFT JOIN vrc_worlds_cache c ON c.world_id = w.world_id
+           WHERE w.vrchat_id IN (${idPh}) ORDER BY w.last_visit_at DESC LIMIT 5000`, vrcids
+        );
+        header = ['世界ID', '世界名', '访问次数', '首次访问', '最近访问'];
+        lines = rows.map(r => [r.world_id, r.world_name, r.visit_count, r.first_visit_at, r.last_visit_at]);
+      } else {
+        const [rows] = await pool.query(
+          `SELECT started_at, ended_at, duration_minutes, world_id, world_name FROM activity_sessions
+           WHERE vrchat_id IN (${idPh}) ORDER BY started_at DESC LIMIT 5000`, vrcids
+        );
+        header = ['开始时间', '结束时间', '时长(分钟)', '世界ID', '世界名'];
+        lines = rows.map(r => [r.started_at, r.ended_at || '', r.duration_minutes, r.world_id, r.world_name]);
+      }
+
+      // BOM 让 Excel 正确识别 UTF-8 中文
+      const csv = '\uFEFF' + [header, ...lines]
+        .map(cols => cols.map(v => csvField(v == null ? '' : String(v))).join(','))
+        .join('\r\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition',
+        `attachment; filename="friends_${type}_${target}_${Date.now()}.csv"`);
+      res.send(csv);
+    } catch (e) {
+      handleError(res, e, '[friends/export-csv]');
+    }
+  });
+
   // 指定好友的共同好友列表（点开详情）
   router.get('/mutuals/:targetUserId', requireAuth, async (req, res) => {
     try {
