@@ -105,6 +105,8 @@ async function loadAlbum(albumId = null) {
       renderAlbum(albumPhotoList);
       const loadMore = document.getElementById('albumPager');
       if (loadMore) loadMore.style.display = data.hasMore ? '' : 'none';
+      // F-09：无限滚动——还有更多时观察「加载更多」按钮，进入视口即自动加载。
+      setupAlbumInfiniteScroll(data.hasMore);
     }
   } catch (err) {
     if (isApiHandledError(err)) return;
@@ -422,6 +424,23 @@ function loadMoreAlbum() {
   if (albumLoading) return;
   albumPage++;
   loadAlbum();
+}
+
+// F-09 无限滚动（借鉴 VRCNext Media Library）：观察「加载更多」按钮，
+// 滚动接近即自动加载下一页；每轮 loadAlbum 完成后重建 observer，
+// 若按钮仍在视口会立即再次触发，形成链式加载直到无更多或按钮移出视口。
+// 保留按钮点击作为兜底（无 IntersectionObserver 时仍可手动加载）。
+let _albumIO = null;
+function setupAlbumInfiniteScroll(hasMore) {
+  const pager = document.getElementById('albumPager');
+  if (_albumIO) { _albumIO.disconnect(); _albumIO = null; }
+  if (!hasMore || !pager || !('IntersectionObserver' in window)) return;
+  _albumIO = new IntersectionObserver(function(entries) {
+    entries.forEach(function(e) {
+      if (e.isIntersecting && !albumLoading) loadMoreAlbum();
+    });
+  }, { rootMargin: '240px 0px' });
+  _albumIO.observe(pager);
 }
 
 async function editPhotoDesc(photoId, currentDesc) {
