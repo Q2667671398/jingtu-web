@@ -789,14 +789,16 @@ module.exports = function (notificationService) {
         }
       }
 
-      // 取目标用户 vrchat_id（会话以 vrchat_id 为键）
+      // 取目标用户的 VRChat ID（activity_sessions.vrchat_id 存的是 VRChat 用户 ID
+      // 如 usr_xxx，来自 group_roster.vrchat_id，而非显示名 vrchat_name）。
+      // 历史 bug：此处曾用 vrchat_name 匹配，导致所有会话查询恒为空。
       const [urows] = await pool.query(
-        `SELECT vrchat_name FROM users WHERE id = ? AND deleted_at IS NULL`, [target]
+        `SELECT vrchat_id FROM users WHERE id = ? AND deleted_at IS NULL`, [target]
       );
-      if (!urows.length || !urows[0].vrchat_name) {
+      if (!urows.length || !urows[0].vrchat_id) {
         return res.json({ items: [], daily: [], totalMinutes: 0, onlineNow: false });
       }
-      const vrcid = urows[0].vrchat_name;
+      const vrcid = urows[0].vrchat_id;
 
       // 会话明细：时间范围内已封口会话 + 全部进行中会话（进行中即使 started_at 在范围外也返回）
       const [items] = await pool.query(
@@ -868,13 +870,13 @@ module.exports = function (notificationService) {
         return sendError(res, 403, ErrorCodes.FORBIDDEN, '无权查看与该用户的共度时间');
       }
 
-      // 取双方 vrchat_name（会话以 vrchat_id 为键）
+      // 取双方 VRChat ID（activity_sessions.vrchat_id 存 VRChat 用户 ID，非显示名）
       const [urows] = await pool.query(
-        `SELECT id, vrchat_name FROM users WHERE id IN (?, ?) AND deleted_at IS NULL`, [me, target]
+        `SELECT id, vrchat_id FROM users WHERE id IN (?, ?) AND deleted_at IS NULL`, [me, target]
       );
       const meRow = urows.find(u => u.id === me);
       const tRow = urows.find(u => u.id === target);
-      if (!meRow || !meRow.vrchat_name || !tRow || !tRow.vrchat_name) {
+      if (!meRow || !meRow.vrchat_id || !tRow || !tRow.vrchat_id) {
         return res.json({ totalMinutes: 0, sessions: [], myMinutes: 0, theirMinutes: 0, days });
       }
 
@@ -894,7 +896,7 @@ module.exports = function (notificationService) {
         }).filter(s => s.end > s.start);
       };
 
-      const [mine, theirs] = await Promise.all([loadSessions(meRow.vrchat_name), loadSessions(tRow.vrchat_name)]);
+      const [mine, theirs] = await Promise.all([loadSessions(meRow.vrchat_id), loadSessions(tRow.vrchat_id)]);
       const sumMin = (arr) => Math.round(arr.reduce((s, x) => s + (x.end - x.start), 0) / 60000);
 
       // 双指针求区间交集（两者均已按 start 升序）
