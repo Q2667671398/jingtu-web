@@ -1130,3 +1130,67 @@ window.trustColorOf = function trustColorOf(level) {
 // 默认信任环颜色：未绑定 VRChat / 名册暂无该用户信任等级时，渲染与 VRChat 默认相同的金色环，
 // 保证「信任环开关」在任何头像上都有可见效果（不随等级变化，仅表示"有环"）。
 window.DEFAULT_TRUST_COLOR = '#ffd700';
+
+
+// ==================== 全站可点击元素键盘可达增强 ====================
+// 背景：不少卡片/列表项用 <div data-action="..."> 实现点击，但无 tabindex/role，
+// 键盘用户 Tab 不到、Enter 也无效。这里统一：
+//   1) 给 div/span/li[data-action] 自动补 role="button" + tabindex="0"（已有则跳过）
+//   2) 全局 keydown 委托：焦点在这些元素上按 Enter/Space 等价于 click()
+//   3) MutationObserver 监听动态渲染，debounce 后增量补齐
+// 只处理「本应可点」的元素；原生 button/a 不受影响（浏览器已支持）。
+(function () {
+  if (window.__a11yClickableInited) return;
+  window.__a11yClickableInited = true;
+
+  var SELECTOR = 'div[data-action], span[data-action], li[data-action]';
+
+  function enhance(root) {
+    var nodes;
+    try { nodes = (root || document).querySelectorAll(SELECTOR); } catch (e) { return; }
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.dataset.a11yReady === '1') continue;
+      // 跳过已原生可交互的元素（内含 button/a 的容器不接管，避免重复触发）
+      if (el.tagName === 'BUTTON' || el.tagName === 'A') continue;
+      if (!el.hasAttribute('role')) el.setAttribute('role', 'button');
+      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+      el.dataset.a11yReady = '1';
+    }
+  }
+
+  // 全局键盘委托：Enter / Space 触发点击
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var el = t.closest('[data-action][tabindex]');
+    if (!el) return;
+    // 输入类元素内的 Space 不应被拦截
+    var tag = (t.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    e.preventDefault();
+    el.click();
+  });
+
+  function scheduleEnhance() {
+    if (scheduleEnhance._t) return;
+    scheduleEnhance._t = setTimeout(function () {
+      scheduleEnhance._t = null;
+      enhance(document);
+    }, 150);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { enhance(document); });
+  } else {
+    enhance(document);
+  }
+
+  // 动态渲染（列表/卡片/日历）后增量补齐
+  try {
+    new MutationObserver(scheduleEnhance).observe(document.body, { childList: true, subtree: true });
+  } catch (e) { /* 老浏览器忽略 */ }
+
+  window.__a11yEnhanceNow = function () { enhance(document); };
+})();

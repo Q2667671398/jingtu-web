@@ -135,13 +135,18 @@
     }
   }
 
+  // 搜索竞态防护：快速输入时，先发的慢请求后返回会覆盖新结果
+  let _followSearchSeq = 0;
+
   async function loadSearch(q) {
     const el = document.getElementById('followSearchResults');
     if (!el) return;
     if (!q || q.trim().length < 2) { el.innerHTML = ''; return; }
+    const mySeq = ++_followSearchSeq;
     try {
       const res = await api('/api/users/search?q=' + encodeURIComponent(q.trim()), { method: 'GET' });
       const d = await res.json().catch(() => ({}));
+      if (mySeq !== _followSearchSeq) return; // 已有更新的搜索，丢弃陈旧响应
       const users = d.users || [];
       if (!res.ok) { el.innerHTML = `<div class="text-muted2 p-8">${esc(errText(d))}</div>`; return; }
       if (!users.length) { el.innerHTML = `<div class="text-muted2 p-8">${esc(__('follows.no_results'))}</div>`; return; }

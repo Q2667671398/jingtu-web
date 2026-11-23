@@ -221,9 +221,10 @@ router.get('/', async (req, res) => {
     }
 
     // VN-12：按日期筛选（时间线今日模式 / 日期筛选）
+    // 用半开区间而非 DATE(p.created_at)=? —— 函数包裹列会让 created_at 索引失效
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) {
-      conditions.push(`DATE(p.created_at) = ?`);
-      params.push(dateFilter);
+      conditions.push(`p.created_at >= ? AND p.created_at < DATE_ADD(?, INTERVAL 1 DAY)`);
+      params.push(dateFilter, dateFilter);
     }
 
     // 关键词搜索：与 /api/posts/search 口径一致，LIKE 转义防注入

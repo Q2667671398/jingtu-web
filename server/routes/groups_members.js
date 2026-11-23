@@ -145,8 +145,9 @@ module.exports = function (getVRCCookieFn, GROUP_ID, getUserVRCCookieFn) {
       const [worldRes] = await pool.query(`SELECT world_name AS worldName, COUNT(*) as count FROM group_roster WHERE is_member=1 AND is_online=1 AND world_name IS NOT NULL AND world_name != '' GROUP BY world_name ORDER BY count DESC LIMIT 10`);
       const [locationRes] = await pool.query(`SELECT location, COUNT(*) as count FROM group_roster WHERE is_member=1 AND is_online=1 AND location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10`);
       const [recentRes] = await pool.query(`SELECT vrchat_name AS displayName, vrchat_status AS status, world_name AS worldName, last_seen AS lastSeen FROM group_roster WHERE is_member=1 ORDER BY last_seen DESC LIMIT 10`);
-      const [joinedTodayRes] = await pool.query(`SELECT COUNT(*) as count FROM group_roster WHERE is_member=1 AND DATE(joined_at) = CURDATE()`);
-      const [leftTodayRes] = await pool.query(`SELECT COUNT(*) as count FROM group_member_changes WHERE change_type='left' AND DATE(created_at) = CURDATE()`);
+      // 用范围比较而非 DATE(col)=CURDATE()：函数包裹列会导致索引失效（无法做范围查找）
+      const [joinedTodayRes] = await pool.query(`SELECT COUNT(*) as count FROM group_roster WHERE is_member=1 AND joined_at >= CURDATE() AND joined_at < CURDATE() + INTERVAL 1 DAY`);
+      const [leftTodayRes] = await pool.query(`SELECT COUNT(*) as count FROM group_member_changes WHERE change_type='left' AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY`);
 
       const statusMap = {};
       for (const row of statusRes) {
