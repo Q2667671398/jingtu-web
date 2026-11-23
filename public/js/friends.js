@@ -179,7 +179,8 @@
         ${longest}
         ${topWorlds ? `<div class="text-12 text-muted2" style="margin:10px 0 4px">${esc(__('friends.rewind_top_worlds'))}</div>${topWorlds}` : ''}`;
     } catch (e) {
-      if (!isApiHandledError(e)) el.innerHTML = `<div class="text-muted2 text-13">${esc(e.message)}</div>`;
+      // 失败（含未登录 401）必须给出终态，不能永远停在「加载中」
+      if (el) el.innerHTML = `<div class="text-muted2 text-13">${esc(__('friends.rewind_empty').replace('{y}', new Date().getFullYear()))}</div>`;
     }
   }
 
@@ -208,7 +209,8 @@
         </div>`;
       }).join('');
     } catch (e) {
-      if (!isApiHandledError(e)) el.innerHTML = `<div class="text-muted2 text-13">${esc(e.message)}</div>`;
+      // 失败（含未登录 401）必须给出终态，不能永远停在「加载中」
+      if (el) el.innerHTML = `<div class="text-muted2 text-13">${esc(__('friends.activity_ranking_empty'))}</div>`;
     }
   }
 
@@ -232,7 +234,8 @@
           </div>
         </div>`).join('');
     } catch (e) {
-      if (!isApiHandledError(e)) el.innerHTML = `<div class="text-muted2 text-13">${esc(e.message)}</div>`;
+      // 失败（含未登录 401）必须给出终态，不能永远停在「加载中」
+      if (el) el.innerHTML = `<div class="text-muted2 text-13">${esc(__('friends.world_ranking_empty'))}</div>`;
     }
   }
 

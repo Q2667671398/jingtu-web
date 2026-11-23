@@ -299,7 +299,9 @@ async function doPasswordLogin() {
   const remember = document.getElementById('rememberLogin')?.checked || false;
   if (!loginId || !password) { toast(__('auth.enter_account_pwd'), 'error'); return; }
   const ok = await login(loginId, password, remember);
-  if (ok) {
+  // 防御：登录返回成功但会话未能建立（如 cookie 被拒/Secure 限制）时 currentUser 可能为 null，
+  // 直接解引用会抛 "Cannot read properties of null (reading 'vrchatId')" 并中断后续流程。
+  if (ok && currentUser) {
     if (currentUser.vrchatId && currentUser.vrchatName) {
       localStorage.setItem('jingtu_vrc_bound', '1');
     } else {

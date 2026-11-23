@@ -1342,7 +1342,8 @@ async function loadActivityLog(page) {
     if (prev) prev.disabled = _activityLogState.page <= 1;
     if (next) next.disabled = _activityLogState.page >= _activityLogState.totalPages;
   } catch (e) {
-    if (!isApiHandledError(e)) listEl.innerHTML = `<p class="text-red text-13">${esc(e.message)}</p>`;
+    // 失败（含未登录 401）必须给出终态，不能永远停在「加载中」
+    if (listEl) listEl.innerHTML = `<p class="text-muted2 text-13">${esc(__('activity_log.empty') || '暂无活动记录')}</p>`;
   }
 }
 
