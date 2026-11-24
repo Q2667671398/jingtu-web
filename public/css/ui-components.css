@@ -304,6 +304,9 @@
 }
 
 /* 按钮样式增强 */
+/* ⚠️ 2026-11-24 注：.btn 的权威定义在 99-design-system.css（58 个属性，最后加载）。
+   此处 .btn 声明全部被其覆盖，属历史遗留；改按钮样式请改 99-design-system.css。
+   详见 docs/12-组件样式权威清单.md */
 .btn {
     padding: 10px 20px;
     border-radius: 10px;
@@ -3117,6 +3120,9 @@ section, .section {
 }
 
 /* ---------- 5. 按钮增强 ---------- */
+/* ⚠️ 2026-11-24 注：.btn 的权威定义在 99-design-system.css（58 个属性，最后加载）。
+   此处 .btn 声明全部被其覆盖，属历史遗留；改按钮样式请改 99-design-system.css。
+   详见 docs/12-组件样式权威清单.md */
 .btn {
   border-radius: 10px;
   font-weight: 600;
@@ -3395,6 +3401,9 @@ img:not([class]) {
   border-color: color-mix(in srgb, var(--border) 78%, transparent);
 }
 
+/* ⚠️ 2026-11-24 注：.btn 的权威定义在 99-design-system.css（58 个属性，最后加载）。
+   此处 .btn 声明全部被其覆盖，属历史遗留；改按钮样式请改 99-design-system.css。
+   详见 docs/12-组件样式权威清单.md */
 .btn {
   min-height: 36px;
   justify-content: center;
