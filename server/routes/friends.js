@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 境途同游 V7.10 — 好友系统路由
  * 单向行 + status 表示 user_id 对 friend_id 的视角；
  *   accepted 写两条对称行便于双向查询；
@@ -531,7 +531,13 @@ module.exports = function (notificationService) {
       );
       const ids = friends.map(f => f.friend_id);
       if (!ids.length) {
-        return res.json({ items: [], total: 0, page, pageSize });
+        // 注意：kinds 也要回显，前端据此渲染筛选态（否则与有好友时的响应形状不一致）
+        const emptyKinds = String(req.query.kind || '')
+          .split(',').map(k => k.trim()).filter(k => ['post', 'event_sign', 'photo'].includes(k));
+        return res.json({
+          items: [], total: 0, page, pageSize,
+          kinds: emptyKinds.length ? emptyKinds : ['post', 'event_sign', 'photo']
+        });
       }
       const ph = ids.map(() => '?').join(',');
       // album/event_sign 的 user_vrcid 存数字用户ID（字符串）或 VRChat ID（usr_xxx），
@@ -540,17 +546,27 @@ module.exports = function (notificationService) {
       const phStr = idStrs.map(() => '?').join(',');
 
       // 三类动态分别查询（各自 LIMIT 保证足够候选，最终统一排序截断）
+      // G-06：支持按类型筛选（kind=post,event_sign,photo 逗号分隔）；
+      // 不传或为空 = 全部。被筛掉的类型直接跳过查询，省掉无用往返。
+      const KIND_WHITELIST = ['post', 'event_sign', 'photo'];
+      const kinds = String(req.query.kind || '')
+        .split(',').map(k => k.trim()).filter(k => KIND_WHITELIST.includes(k));
+      const wantAll = kinds.length === 0;
+      const wantPost = wantAll || kinds.includes('post');
+      const wantSign = wantAll || kinds.includes('event_sign');
+      const wantPhoto = wantAll || kinds.includes('photo');
+
       // 1) 动态 posts
-      const [posts] = await pool.query(
+      const posts = wantPost ? (await pool.query(
         `SELECT p.id, p.user_id, p.content, p.type, p.created_at, p.like_count, p.comment_count,
                 u.display_name, u.vrchat_name, u.avatar_type, u.custom_avatar_path, u.vrchat_avatar_url
          FROM posts p JOIN users u ON u.id = p.user_id
          WHERE p.user_id IN (${ph}) AND p.visibility IN ('public','members_only')
            AND u.deleted_at IS NULL
          ORDER BY p.created_at DESC LIMIT ?`, [...ids, pageSize]
-      );
+      ))[0] : [];
       // 2) 活动报名 event_sign（仅已确认报名）
-      const [signs] = await pool.query(
+      const signs = wantSign ? (await pool.query(
         `SELECT s.id, s.event_id, s.user_vrcid, s.user_name, s.sign_time,
                 e.title AS event_title
          FROM event_sign s JOIN event e ON e.id = s.event_id
@@ -560,9 +576,9 @@ module.exports = function (notificationService) {
            SELECT vrchat_id FROM users WHERE id IN (${ph}) AND vrchat_id IS NOT NULL AND vrchat_id != ''
          )) AND s.is_sign = 1 AND s.sign_time IS NOT NULL
          ORDER BY s.sign_time DESC LIMIT ?`, [...idStrs, ...ids, ...ids, pageSize]
-      );
+      ))[0] : [];
       // 3) 相册照片 album_photo
-      const [photos] = await pool.query(
+      const photos = wantPhoto ? (await pool.query(
         `SELECT a.id, a.upload_vrcid, a.upload_name, a.photo_desc, a.photo_path, a.thumb_path,
                 a.like_count, a.create_time
          FROM album_photo a
@@ -572,7 +588,7 @@ module.exports = function (notificationService) {
            SELECT vrchat_id FROM users WHERE id IN (${ph}) AND vrchat_id IS NOT NULL AND vrchat_id != ''
          )) AND a.visibility IN ('public','members_only') AND a.is_recycle = 0
          ORDER BY a.create_time DESC LIMIT ?`, [...idStrs, ...ids, ...ids, pageSize]
-      );
+      ))[0] : [];
 
       // 归一化为统一 feed item
       const items = [];
@@ -620,7 +636,7 @@ module.exports = function (notificationService) {
       const total = items.length;
       const pageItems = items.slice(offset, offset + pageSize);
 
-      res.json({ items: pageItems, total, page, pageSize });
+      res.json({ items: pageItems, total, page, pageSize, kinds: wantAll ? KIND_WHITELIST : kinds });
     } catch (e) {
       handleError(res, e, '[friends/feed]');
     }

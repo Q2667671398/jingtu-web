@@ -110,6 +110,12 @@
         </div>
         <div class="social-section">
           <h3 class="social-h3">${__('friends.feed_title')}</h3>
+          <div class="feed-filter-bar" id="feedFilterBar">
+            <button type="button" class="feed-filter-chip active" data-feed-kind="">${esc(__('friends.feed_all') || '全部')}</button>
+            <button type="button" class="feed-filter-chip" data-feed-kind="post">📝 ${esc(__('friends.feed_post') || '动态')}</button>
+            <button type="button" class="feed-filter-chip" data-feed-kind="event_sign">🎫 ${esc(__('friends.feed_sign') || '报名')}</button>
+            <button type="button" class="feed-filter-chip" data-feed-kind="photo">🖼 ${esc(__('friends.feed_photo') || '照片')}</button>
+          </div>
           <div id="friendFeed"></div>
         </div>
         <div class="social-section">
@@ -131,6 +137,7 @@
       </div>`;
     bindFriendsEvents();
     bindFriendListControls();
+    bindFeedFilters();
     loadRequests();
     loadFriends();
     loadFeed();
@@ -413,6 +420,8 @@
   // ==================== F-12 好友动态 Feed ====================
   let _feedPage = 1;
   let _feedDone = false;
+  let _feedLoading = false;
+  let _feedKind = ''; // G-06：空=全部；可多选逗号分隔 post,event_sign,photo
 
   function fmtTime(t) {
     if (!t) return '';
@@ -460,12 +469,31 @@
       </div>`;
   }
 
+  // G-06：动态类型筛选条
+  function bindFeedFilters() {
+    const bar = document.getElementById('feedFilterBar');
+    if (!bar || bar.dataset.bound === '1') return;
+    bar.dataset.bound = '1';
+    bar.addEventListener('click', (e) => {
+      const chip = e.target && e.target.closest ? e.target.closest('[data-feed-kind]') : null;
+      if (!chip) return;
+      _feedKind = chip.dataset.feedKind || '';
+      Array.from(bar.querySelectorAll('[data-feed-kind]')).forEach(b => {
+        b.classList.toggle('active', b === chip);
+      });
+      loadFeed(true);
+    });
+  }
+
   async function loadFeed(reset) {
     const el = document.getElementById('friendFeed');
     if (!el) return;
-    if (reset) { _feedPage = 1; _feedDone = false; }
+    if (reset) { _feedPage = 1; _feedDone = false; _feedLoading = false; }
+    if (_feedLoading) return;
+    _feedLoading = true;
     try {
-      const res = await api(`/api/friends/feed?page=${_feedPage}&pageSize=15`, { method: 'GET' });
+      const kindQs = _feedKind ? `&kind=${encodeURIComponent(_feedKind)}` : '';
+      const res = await api(`/api/friends/feed?page=${_feedPage}&pageSize=15${kindQs}`, { method: 'GET' });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { if (reset) el.innerHTML = `<div class="text-muted2 p-16">${esc(errText(d))}</div>`; return; }
       const items = d.items || [];
@@ -474,20 +502,41 @@
         _feedDone = true;
         return;
       }
-      let html = (reset ? '' : el.innerHTML.replace(/<button[^>]*data-feed-more[\s\S]*$/, ''));
+      // 保留筛选条，只替换列表部分
+      const listEl = document.getElementById('friendFeedList');
+      const host = listEl || el;
+      let html = (reset ? '' : host.innerHTML.replace(/<div class="feed-sentinel"[\s\S]*?<\/div>/g, ''));
       html += items.map(feedItemHtml).join('');
-      // “加载更多”按钮：本页仍有下一页数据时展示
       if (items.length >= 15 && !_feedDone) {
-        html += `<div class="text-center p-8"><button class="btn btn-sm btn-outline" data-feed-more>${esc(__('friends.feed_load_more'))}</button></div>`;
+        // 无限滚动哨兵：进入视口即加载下一页（JS 不可用/不支持 IO 时降级为按钮）
+        html += `<div class="feed-sentinel"><button class="btn btn-sm btn-outline" data-feed-more>${esc(__('friends.feed_load_more'))}</button></div>`;
       } else {
         _feedDone = true;
       }
-      el.innerHTML = html;
+      host.innerHTML = html;
       _feedPage += 1;
+      attachFeedSentinel();
     } catch (e) {
       if (isApiHandledError(e)) return;
       if (reset) el.innerHTML = `<div class="text-muted2 p-16">${esc(e.message)}</div>`;
+    } finally {
+      _feedLoading = false;
     }
+  }
+
+  // G-06：无限滚动（IntersectionObserver）。哨兵进入视口 → 自动加载下一页。
+  let _feedObserver = null;
+  function attachFeedSentinel() {
+    const sentinel = document.querySelector('#friendFeedList .feed-sentinel, #friendFeed .feed-sentinel');
+    if (!sentinel || _feedDone) return;
+    if (typeof IntersectionObserver !== 'function') return; // 老浏览器靠按钮
+    if (_feedObserver) { _feedObserver.disconnect(); }
+    _feedObserver = new IntersectionObserver((entries) => {
+      if (entries.some(e => e.isIntersecting) && !_feedLoading && !_feedDone) {
+        loadFeed(false);
+      }
+    }, { rootMargin: '200px' });
+    _feedObserver.observe(sentinel);
   }
 
   // ==================== F-11 共同好友弹窗 ====================

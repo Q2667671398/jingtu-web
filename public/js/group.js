@@ -933,8 +933,8 @@ async function loadGroupChanges() {
   const list = document.getElementById('groupChangesList');
   if (!section || !list) return;
 
-  const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'super_admin');
-  if (!isAdmin) { section.classList.add('d-none'); return; }
+  // G-03：成员变动时间线对所有登录成员可见（后端 /group/members/changes 已是 requireAuth）。
+  // 原来这里硬编码只给管理员看，导致普通成员看不到"谁入群/退群"。
   section.classList.remove('d-none');
 
   try {
@@ -954,15 +954,31 @@ async function loadGroupChanges() {
       if (isNaN(dt.getTime())) return esc(String(x));
       return dt.toLocaleString(getCurrentLang ? getCurrentLang() : 'zh', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
     };
+    // G-03：入群时长（joined 事件才显示）——按自然天/月/年给一个易读说法
+    const fmtDuration = (from) => {
+      if (!from) return '';
+      const t = new Date(from).getTime();
+      if (isNaN(t)) return '';
+      const days = Math.floor((Date.now() - t) / 86400000);
+      if (days < 0) return '';
+      if (days === 0) return __('group.dur_today') || '今天入群';
+      if (days < 30) return (__('group.dur_days') || '已入群 {n} 天').replace('{n}', days);
+      const months = Math.floor(days / 30);
+      if (months < 12) return (__('group.dur_months') || '已入群 {n} 个月').replace('{n}', months);
+      const years = Math.floor(months / 12);
+      return (__('group.dur_years') || '已入群 {n} 年').replace('{n}', years);
+    };
     list.innerHTML = changes.map(c => {
       const icon = c.changeType === 'joined' ? '✅' : c.changeType === 'left' ? '👋' : '🔄';
       const typeLabel = c.changeType === 'joined' ? __('group.status_joined') : c.changeType === 'left' ? __('group.status_left') : __('group.status_changed');
       const absTime = fmtChangeTime(c.createdAt);
       const relText = formatLastSeen(c.createdAt);
+      const dur = c.changeType === 'joined' ? fmtDuration(c.createdAt) : '';
       return `<div class="group-change-item">
         <span class="group-change-icon">${icon}</span>
         <span class="group-change-name">${esc(c.vrchatName)}</span>
         <span class="group-change-type ${c.changeType}">${typeLabel}</span>
+        ${dur ? `<span class="group-change-dur">${esc(dur)}</span>` : ''}
         <span class="group-change-time"${relText !== absTime ? ` title="${escAttr(relText)}"` : ''}>${absTime}</span>
       </div>`;
     }).join('');
