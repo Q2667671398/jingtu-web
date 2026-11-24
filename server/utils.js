@@ -145,6 +145,29 @@ function sendVrcError(res, upstream, action) {
   });
 }
 
+// ==================== 统一响应格式（BE-02 选型指南） ====================
+// 本项目历史上存在三套响应格式，前端已分别适配，**三者契约不同、不可互换**：
+//
+//   ┌─ ok(res, fields)
+//   │    → { success: true, ...fields }        扁平，无 data 包装
+//   ├─ fail(res, status, message, extra)
+//   │    → { success: false, error: "字符串", ...extra }
+//   │      适用：前端裸读 data.error 当字符串（约 35 处页面脚本）；extra 平铺供
+//   │      顶层 code / retryAfter / detail 的路由拦截使用
+//   └─ sendError(res, status, code, message, detail)
+//        → { success: false, error: { code, message, detail? } }
+//          适用：前端读 data.error.code / data.error.message 的嵌套读取方
+//
+// **选型建议（新代码）**：
+//   - 成功一律用 ok()
+//   - 错误优先用 sendError()（结构化错误码，便于前端分支与日志检索）
+//   - 仅当该文件既有前端明确裸读 data.error 字符串时才用 fail()，不要混用
+//   - 不要新增 res.json({ ok: ... }) / res.json({ success: ... }) 裸格式；
+//     已有数量由 __tests__/response-format-contract.test.js 冻结（只减不增）
+//
+// 迁移原则：改某文件时顺手把该文件的裸格式收敛到 helper，但**不要**跨文件批量替换
+// （前端依赖各自当前形状，批量改 = 全站风险）。
+
 function sendError(res, status, code, message, detail) {
   const err = { success: false, error: { code, message } };
   // B6: detail 为调用方显式传入的业务性补充说明，不再按 NODE_ENV 门控；err.message/stack 一律只进日志
