@@ -1121,6 +1121,8 @@ async function initDatabase() {
         file_group_id INT NULL COMMENT '同组文件 ID（多版本归组；NULL=未归组，首次上传后回填自身 id）',
         version VARCHAR(30) DEFAULT '1' COMMENT '版本号（语义化，如 1.0.0）',
         is_latest TINYINT DEFAULT 1 COMMENT '是否该组最新版本（列表默认只显示最新）',
+        access_level VARCHAR(20) DEFAULT 'all' COMMENT '下载权限：all=所有登录成员 / admin=仅管理员 / groups=指定权限分组',
+        allowed_group_ids JSON COMMENT '允许下载的权限分组 ID 数组（access_level=groups 时生效）',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_category(category_id),
         INDEX idx_deleted_created(is_deleted, created_at),
@@ -1145,6 +1147,8 @@ async function initDatabase() {
         description TEXT COMMENT '说明',
         version VARCHAR(30) DEFAULT '1' COMMENT '版本号',
         file_group_id INT NULL COMMENT '归入的文件组（多版本时）',
+        access_level VARCHAR(20) DEFAULT 'all' COMMENT '下载权限（完成入库时生效）',
+        allowed_group_ids JSON COMMENT '允许下载的权限分组ID数组',
         status VARCHAR(20) DEFAULT 'uploading' COMMENT 'uploading|completed|aborted',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -1707,6 +1711,10 @@ async function initDatabase() {
       `ALTER TABLE group_files ADD COLUMN file_group_id INT NULL COMMENT '同组文件 ID（多版本归组）'`,
       `ALTER TABLE group_files ADD COLUMN version VARCHAR(30) DEFAULT '1' COMMENT '版本号'`,
       `ALTER TABLE group_files ADD COLUMN is_latest TINYINT DEFAULT 1 COMMENT '是否最新版本'`,
+      `ALTER TABLE group_files ADD COLUMN access_level VARCHAR(20) DEFAULT 'all' COMMENT '下载权限'`,
+      `ALTER TABLE group_files ADD COLUMN allowed_group_ids JSON COMMENT '允许下载的权限分组ID数组'`,
+      `ALTER TABLE file_upload_sessions ADD COLUMN access_level VARCHAR(20) DEFAULT 'all' COMMENT '下载权限'`,
+      `ALTER TABLE file_upload_sessions ADD COLUMN allowed_group_ids JSON COMMENT '权限分组ID数组'`,
       `ALTER TABLE group_files ADD INDEX idx_group_latest(file_group_id, is_latest)`,
     ]) {
       try {

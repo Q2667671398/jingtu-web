@@ -74,12 +74,23 @@
         const histBtn = f.versionCount > 1
           ? `<button type="button" class="btn btn-sm btn-outline" data-file-versions="${f.id}">🕘 ${esc(__('files.versions') || '历史版本')} (${f.versionCount})</button>`
           : '';
+        // 权限标记：仅管理员 / 指定分组
+        const lv = f.accessLevel || 'all';
+        const lockBadge = lv === 'admin'
+          ? `<span class="files-lock-badge">🔒 ${esc(__('files.access_admin') || '仅管理员')}</span>`
+          : (lv === 'groups'
+            ? `<span class="files-lock-badge">🔐 ${esc(__('files.access_groups') || '指定分组')}</span>`
+            : '');
+        const checkbox = canDel
+          ? `<label class="files-check"><input type="checkbox" data-file-check="${f.id}"></label>`
+          : '';
         return `
           <div class="files-item" data-file-id="${f.id}">
+            ${checkbox}
             <div class="files-icon">${icon}</div>
             <div class="files-main">
-              <div class="files-title">${esc(f.title)}${verBadge}</div>
-              ${f.description ? `<div class="files-desc">${esc(f.description)}</div>` : ''}
+              <div class="files-title">${esc(f.title)}${verBadge}${lockBadge}</div>
+              ${f.description ? `<div class="files-desc files-desc-md">${renderSimpleMarkdown(f.description)}</div>` : ''}
               <div class="files-meta">
                 <span>${esc(f.fileName)}</span>
                 <span>·</span><span>${esc(f.fileSizeText)}</span>
@@ -92,11 +103,13 @@
             <div class="files-actions">
               <button type="button" class="btn btn-sm btn-accent" data-file-download="${f.id}">⬇ ${esc(__('files.download'))}</button>
               ${histBtn}
+              ${canDel ? `<button type="button" class="btn btn-sm btn-outline" data-file-edit="${f.id}">✏️ ${esc(__('common.edit') || '编辑')}</button>` : ''}
               ${canDel ? `<button type="button" class="btn btn-sm btn-outline" data-file-delete="${f.id}">${esc(__('common.delete'))}</button>` : ''}
             </div>
           </div>`;
       }).join('');
-      window.__filesLastList = files; // 供上传弹窗的「归组」下拉使用
+      window.__filesLastList = files; // 供上传弹窗的「归组」下拉与批量操作使用
+      renderBatchBar();
       renderPager();
     } catch (e) {
       if (mySeq !== _filesSeq) return;
@@ -188,6 +201,17 @@
           <div class="form-group"><label for="fileUploadGroup">${esc(__('files.as_new_version') || '作为新版本加入已有文件（可选）')}</label>
             <select id="fileUploadGroup" class="form-input"></select>
           </div>
+          <div class="form-group"><label for="fileUploadAccess">${esc(__('files.access_level') || '下载权限')}</label>
+            <select id="fileUploadAccess" class="form-input">
+              <option value="all">${esc(__('files.access_all') || '所有登录成员')}</option>
+              <option value="admin">${esc(__('files.access_admin') || '仅管理员')}</option>
+              <option value="groups">${esc(__('files.access_groups') || '指定分组')}</option>
+            </select>
+          </div>
+          <div class="form-group" id="fileUploadGroupsWrap" style="display:none">
+            <label>${esc(__('files.allowed_groups') || '允许的分组（可多选）')}</label>
+            <div id="fileUploadGroups" class="files-groups-pick"></div>
+          </div>
           <div class="form-group"><label for="fileUploadDesc">${esc(__('files.desc_label'))}</label>
             <textarea id="fileUploadDesc" class="form-input" rows="3" maxlength="1000"></textarea>
           </div>
@@ -203,6 +227,28 @@
       if (e.target && e.target.hasAttribute('data-modal-close')) closeModal('fileUploadModal');
     });
     document.getElementById('fileUploadSubmit').addEventListener('click', doUpload);
+    document.getElementById('fileUploadAccess').addEventListener('change', async (e) => {
+      const wrap = document.getElementById('fileUploadGroupsWrap');
+      if (wrap) wrap.style.display = e.target.value === 'groups' ? '' : 'none';
+      if (e.target.value === 'groups') await fillUploadGroups();
+    });
+  }
+
+  // 上传弹窗的分组多选
+  async function fillUploadGroups() {
+    const box = document.getElementById('fileUploadGroups');
+    if (!box || box.dataset.filled === '1') return;
+    const groups = await loadPermGroups();
+    if (!groups.length) {
+      box.innerHTML = `<p class="text-12 text-muted2">${esc(__('files.no_groups') || '暂无可选分组')}</p>`;
+    } else {
+      box.innerHTML = groups.map(g => `
+        <label class="files-group-opt">
+          <input type="checkbox" value="${g.id}">
+          <span>${esc(g.name)}</span>
+        </label>`).join('');
+    }
+    box.dataset.filled = '1';
   }
 
   function fillUploadCats() {
@@ -232,12 +278,22 @@
     if (!input || !input.files || !input.files.length) { toast(__('files.pick_file_first'), 'error'); return; }
     const file = input.files[0];
 
+    const accessEl = document.getElementById('fileUploadAccess');
+    const accessLevel = accessEl ? accessEl.value : 'all';
+    const allowedGroupIds = Array.from(document.querySelectorAll('#fileUploadGroups input:checked'))
+      .map(el => parseInt(el.value, 10)).filter(n => Number.isInteger(n));
+    if (accessLevel === 'groups' && !allowedGroupIds.length) {
+      toast(__('files.must_pick_group') || '选择「指定分组」时必须至少选一个分组', 'error');
+      return;
+    }
     const meta = {
       title: (titleEl && titleEl.value.trim()) || file.name,
       categoryId: catEl ? catEl.value : '',
       description: descEl ? descEl.value.trim() : '',
       version: (verEl && verEl.value.trim()) || '1',
-      groupId: grpEl ? grpEl.value : ''
+      groupId: grpEl ? grpEl.value : '',
+      accessLevel,
+      allowedGroupIds
     };
 
     _uploading = true;
@@ -277,6 +333,10 @@
     fd.append('description', meta.description);
     fd.append('version', meta.version);
     if (meta.groupId) fd.append('groupId', meta.groupId);
+    fd.append('accessLevel', meta.accessLevel || 'all');
+    if (meta.allowedGroupIds && meta.allowedGroupIds.length) {
+      fd.append('allowedGroupIds', JSON.stringify(meta.allowedGroupIds));
+    }
     let res;
     try {
       res = await apiForm('/api/group-files/upload', fd, { timeout: 600000 });
@@ -323,7 +383,9 @@
       body: {
         fileHash, fileName: file.name, totalSize: file.size, chunkSize: CHUNK_SIZE,
         title: meta.title, categoryId: meta.categoryId, description: meta.description,
-        version: meta.version, groupId: meta.groupId
+        version: meta.version, groupId: meta.groupId,
+        accessLevel: meta.accessLevel || 'all',
+        allowedGroupIds: meta.allowedGroupIds || []
       },
       timeout: 60000
     });
@@ -374,6 +436,289 @@
       let msg = __('files.upload_failed');
       try { const d = await doneRes.json(); msg = errText(d) || msg; } catch (e) { /* ignore */ }
       throw new Error(msg);
+    }
+  }
+
+  // ---------- 极简安全 Markdown（只用于文件描述） ----------
+  // 关键：先整体 esc() 转义，再在「已转义文本」上做标记替换 → 用户输入永不参与 HTML 拼接。
+  // 仅支持：**粗体** / *斜体* / `代码` / [文本](http链接) / 换行。不支持任何原始 HTML。
+  function renderSimpleMarkdown(raw) {
+    if (!raw) return '';
+    let s = esc(String(raw));
+    // 行内代码（优先处理，避免内部符号被后续规则误伤）
+    s = s.replace(/`([^`\n]{1,200})`/g, '<code>$1</code>');
+    // 粗体 **text**
+    s = s.replace(/\*\*([^*\n]{1,200})\*\*/g, '<strong>$1</strong>');
+    // 斜体 *text*（避开已生成的标签：要求前面不是 * 或字母数字）
+    s = s.replace(/(^|[^*\w])\*([^*\n]{1,200})\*(?=[^*\w]|$)/g, '$1<em>$2</em>');
+    // 链接 [text](url)：url 只允许 http/https（esc 后 &amp; 需还原判断）
+    s = s.replace(/\[([^\]\n]{1,100})\]\((https?:\/\/[^\s)]{1,300})\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer nofollow">$1</a>');
+    // 换行
+    s = s.replace(/\r?\n/g, '<br>');
+    return s;
+  }
+
+  // ---------- 批量操作栏 ----------
+  function selectedFileIds() {
+    return Array.from(document.querySelectorAll('[data-file-check]:checked'))
+      .map(el => parseInt(el.dataset.fileCheck, 10))
+      .filter(n => Number.isInteger(n));
+  }
+
+  function renderBatchBar() {
+    const bar = document.getElementById('filesBatchBar');
+    if (!bar) return;
+    if (!isAdmin()) { bar.style.display = 'none'; return; }
+    const n = selectedFileIds().length;
+    bar.style.display = '';
+    const cnt = document.getElementById('filesBatchCount');
+    if (cnt) cnt.textContent = n ? (__('files.selected_n') || '已选 {n} 项').replace('{n}', n) : '';
+    const moveBtn = document.getElementById('filesBatchMove');
+    const clearBtn = document.getElementById('filesBatchClear');
+    if (moveBtn) moveBtn.disabled = !n;
+    if (clearBtn) clearBtn.disabled = !n;
+  }
+
+  function ensureBatchMoveModal() {
+    if (document.getElementById('filesBatchMoveModal')) return;
+    const el = document.createElement('div');
+    el.className = 'modal';
+    el.id = 'filesBatchMoveModal';
+    el.style.display = 'none';
+    el.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title">📁 ${esc(__('files.batch_move') || '批量移动到分类')}</h3>
+          <button type="button" class="modal-close" data-modal-close="filesBatchMoveModal" aria-label="close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group"><label for="filesBatchTargetCat">${esc(__('files.target_category') || '目标分类')}</label>
+            <select id="filesBatchTargetCat" class="form-input"></select>
+          </div>
+          <div class="flex-row gap-8 mt-12">
+            <button type="button" class="btn btn-accent" id="filesBatchMoveConfirm">${esc(__('files.do_move') || '确定移动')}</button>
+            <button type="button" class="btn btn-outline" data-modal-close="filesBatchMoveModal">${esc(__('common.cancel'))}</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', (e) => {
+      if (e.target && e.target.hasAttribute('data-modal-close')) closeModal('filesBatchMoveModal');
+    });
+    document.getElementById('filesBatchMoveConfirm').addEventListener('click', doBatchMove);
+  }
+
+  async function doBatchMove() {
+    const ids = selectedFileIds();
+    if (!ids.length) { toast(__('files.pick_files_first') || '请先选择文件', 'error'); return; }
+    const sel = document.getElementById('filesBatchTargetCat');
+    const target = sel ? sel.value : '';
+    try {
+      const res = await api('/api/group-files/batch-move', {
+        method: 'POST', body: { ids, categoryId: target }
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(errText(d) || __('files.move_failed') || '移动失败', 'error'); return; }
+      toast((__('files.moved_n') || '已移动 {n} 个文件').replace('{n}', d.moved || 0), 'success');
+      closeModal('filesBatchMoveModal');
+      loadCategories();
+      loadFiles(_filesState.page);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // ---------- 编辑文件（标题/描述/分类/权限） ----------
+  function ensureEditModal() {
+    if (document.getElementById('filesEditModal')) return;
+    const el = document.createElement('div');
+    el.className = 'modal';
+    el.id = 'filesEditModal';
+    el.style.display = 'none';
+    el.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title">✏️ ${esc(__('common.edit') || '编辑')}</h3>
+          <button type="button" class="modal-close" data-modal-close="filesEditModal" aria-label="close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="filesEditId">
+          <div class="form-group"><label for="filesEditTitle">${esc(__('files.title_label'))}</label>
+            <input type="text" id="filesEditTitle" class="form-input" maxlength="200"></div>
+          <div class="form-group"><label for="filesEditDesc">${esc(__('files.desc_label'))} <span class="text-12 text-muted2">(支持 **粗体**、*斜体*、\`代码\`、[链接](url))</span></label>
+            <textarea id="filesEditDesc" class="form-input" rows="4" maxlength="10000"></textarea></div>
+          <div class="form-group"><label for="filesEditCat">${esc(__('files.category'))}</label>
+            <select id="filesEditCat" class="form-input"></select></div>
+          <div class="form-group"><label for="filesEditAccess">${esc(__('files.access_level') || '下载权限')}</label>
+            <select id="filesEditAccess" class="form-input">
+              <option value="all">${esc(__('files.access_all') || '所有登录成员')}</option>
+              <option value="admin">${esc(__('files.access_admin') || '仅管理员')}</option>
+              <option value="groups">${esc(__('files.access_groups') || '指定分组')}</option>
+            </select></div>
+          <div class="form-group" id="filesEditGroupsWrap" style="display:none">
+            <label>${esc(__('files.allowed_groups') || '允许的分组（可多选）')}</label>
+            <div id="filesEditGroups" class="files-groups-pick"></div>
+          </div>
+          <div class="flex-row gap-8 mt-12">
+            <button type="button" class="btn btn-accent" id="filesEditSave">${esc(__('common.save') || '保存')}</button>
+            <button type="button" class="btn btn-outline" data-modal-close="filesEditModal">${esc(__('common.cancel'))}</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', (e) => {
+      if (e.target && e.target.hasAttribute('data-modal-close')) closeModal('filesEditModal');
+    });
+    document.getElementById('filesEditAccess').addEventListener('change', (e) => {
+      const wrap = document.getElementById('filesEditGroupsWrap');
+      if (wrap) wrap.style.display = e.target.value === 'groups' ? '' : 'none';
+    });
+    document.getElementById('filesEditSave').addEventListener('click', saveEdit);
+  }
+
+  let _groupsCache = null;
+  async function loadPermGroups() {
+    if (_groupsCache) return _groupsCache;
+    try {
+      const res = await api('/api/admin/perm-groups', { method: 'GET' });
+      if (!res.ok) return [];
+      const d = await res.json().catch(() => ({}));
+      _groupsCache = d.groups || d.list || [];
+      return _groupsCache;
+    } catch (e) { return []; }
+  }
+
+  async function openEdit(fileId) {
+    const f = (window.__filesLastList || []).find(x => String(x.id) === String(fileId));
+    if (!f) return;
+    ensureEditModal();
+    document.getElementById('filesEditId').value = f.id;
+    document.getElementById('filesEditTitle').value = f.title || '';
+    document.getElementById('filesEditDesc').value = f.description || '';
+    // 分类下拉
+    const catSel = document.getElementById('filesEditCat');
+    catSel.innerHTML = `<option value="">${esc(__('files.uncategorized'))}</option>` +
+      _filesState.categories.map(c => `<option value="${c.id}"${String(c.id) === String(f.categoryId) ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
+    // 权限
+    const lv = f.accessLevel || 'all';
+    document.getElementById('filesEditAccess').value = lv;
+    document.getElementById('filesEditGroupsWrap').style.display = lv === 'groups' ? '' : 'none';
+    // 分组多选
+    const box = document.getElementById('filesEditGroups');
+    const groups = await loadPermGroups();
+    const picked = new Set((f.allowedGroupIds || []).map(String));
+    if (!groups.length) {
+      box.innerHTML = `<p class="text-12 text-muted2">${esc(__('files.no_groups') || '暂无可选分组')}</p>`;
+    } else {
+      box.innerHTML = groups.map(g => `
+        <label class="files-group-opt">
+          <input type="checkbox" value="${g.id}"${picked.has(String(g.id)) ? ' checked' : ''}>
+          <span>${esc(g.name)}</span>
+        </label>`).join('');
+    }
+    showModal('filesEditModal');
+  }
+
+  async function saveEdit() {
+    const id = document.getElementById('filesEditId').value;
+    const title = document.getElementById('filesEditTitle').value.trim();
+    const description = document.getElementById('filesEditDesc').value;
+    const categoryId = document.getElementById('filesEditCat').value;
+    const accessLevel = document.getElementById('filesEditAccess').value;
+    const allowedGroupIds = Array.from(document.querySelectorAll('#filesEditGroups input:checked'))
+      .map(el => parseInt(el.value, 10)).filter(n => Number.isInteger(n));
+    if (accessLevel === 'groups' && !allowedGroupIds.length) {
+      toast(__('files.must_pick_group') || '选择「指定分组」时必须至少选一个分组', 'error');
+      return;
+    }
+    try {
+      const res = await api('/api/group-files/' + encodeURIComponent(id), {
+        method: 'PUT',
+        body: { title, description, categoryId, accessLevel, allowedGroupIds }
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(errText(d) || __('files.save_failed') || '保存失败', 'error'); return; }
+      toast(__('files.saved') || '已保存', 'success');
+      closeModal('filesEditModal');
+      loadFiles(_filesState.page);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // ---------- 维护面板 ----------
+  function ensureMaintenanceModal() {
+    if (document.getElementById('filesMaintModal')) return;
+    const el = document.createElement('div');
+    el.className = 'modal';
+    el.id = 'filesMaintModal';
+    el.style.display = 'none';
+    el.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title">🧹 ${esc(__('files.maintenance') || '维护')}</h3>
+          <button type="button" class="modal-close" data-modal-close="filesMaintModal" aria-label="close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="text-13 text-muted2">${esc(__('files.maint_hint') || '清理过期上传会话、检测并清理孤儿文件。')}</p>
+          <div class="files-maint-row">
+            <div>
+              <div class="text-14" style="font-weight:600">${esc(__('files.clean_sessions') || '清理过期上传会话')}</div>
+              <div class="text-12 text-muted2">${esc(__('files.clean_sessions_hint') || '超过 24 小时未完成的分片上传会话')}</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" id="filesCleanSessions">${esc(__('files.do_clean') || '清理')}</button>
+          </div>
+          <div class="files-maint-row">
+            <div>
+              <div class="text-14" style="font-weight:600">${esc(__('files.scan_orphans') || '孤儿文件检测')}</div>
+              <div class="text-12 text-muted2">${esc(__('files.scan_orphans_hint') || 'DB 有记录但磁盘缺失 / 磁盘有文件但 DB 无记录')}</div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" id="filesScanOrphans">${esc(__('files.do_scan') || '扫描')}</button>
+          </div>
+          <div id="filesMaintResult" class="mt-12"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', (e) => {
+      if (e.target && e.target.hasAttribute('data-modal-close')) closeModal('filesMaintModal');
+    });
+    document.getElementById('filesCleanSessions').addEventListener('click', () => runMaint('cleanup-sessions', {}));
+    document.getElementById('filesScanOrphans').addEventListener('click', () => runMaint('orphans', { mode: 'scan' }));
+  }
+
+  async function runMaint(action, body) {
+    const box = document.getElementById('filesMaintResult');
+    if (box) box.innerHTML = `<p class="text-muted2 text-13">${esc(__('common.loading'))}</p>`;
+    try {
+      const res = await api('/api/group-files/maintenance/' + action, { method: 'POST', body });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { if (box) box.innerHTML = `<p class="text-13">${esc(errText(d) || '失败')}</p>`; return; }
+      if (action === 'cleanup-sessions') {
+        if (box) box.innerHTML = `<p class="text-13">✅ ${esc((__('files.cleaned_n') || '已清理 {n} 个过期会话').replace('{n}', d.removed || 0))}</p>`;
+        return;
+      }
+      // orphans 扫描结果
+      let html = `<div class="text-13" style="margin-bottom:8px">
+        <b>${esc(__('files.broken') || 'DB 有记录但磁盘缺失')}: ${d.brokenCount}</b><br>
+        <b>${esc(__('files.orphan') || '磁盘有文件但无记录')}: ${d.orphanCount}</b></div>`;
+      if (d.brokenFiles && d.brokenFiles.length) {
+        html += `<div class="text-12 text-muted2" style="margin-bottom:4px">${esc(__('files.broken_list') || '缺失文件（最多显示 50 条）')}:</div>`;
+        html += d.brokenFiles.map(b => `<div class="text-12" style="word-break:break-all">· #${b.id} ${esc(b.title || b.name || '')} — ${esc(b.reason || '')}</div>`).join('');
+      }
+      if (d.orphanFiles && d.orphanFiles.length) {
+        html += `<div class="text-12 text-muted2" style="margin:8px 0 4px">${esc(__('files.orphan_list') || '孤儿文件（最多显示 50 条）')}:</div>`;
+        html += d.orphanFiles.map(o => `<div class="text-12" style="word-break:break-all">· ${esc(o.name)} (${esc(o.sizeText)})</div>`).join('');
+      }
+      if ((d.brokenCount + d.orphanCount) > 0) {
+        html += `<div class="mt-12"><button type="button" class="btn btn-sm btn-danger" id="filesCleanOrphans">${esc(__('files.clean_orphans') || '清理孤儿文件（删除无记录文件、标记破损记录）')}</button></div>`;
+      }
+      if (box) box.innerHTML = html;
+      const btn = document.getElementById('filesCleanOrphans');
+      if (btn) btn.addEventListener('click', async () => {
+        const okDel = await new Promise(r => showConfirm(__('files.confirm_clean_orphans') || '确定清理？孤儿文件将被物理删除，破损记录将被标记删除。', () => r(true), () => r(false)));
+        if (!okDel) return;
+        await runMaint('orphans', { mode: 'clean' });
+        loadFiles(_filesState.page);
+      });
+    } catch (e) {
+      if (box) box.innerHTML = `<p class="text-13">${esc(e.message)}</p>`;
     }
   }
 
@@ -521,6 +866,8 @@
       if (del) { deleteFile(del.dataset.fileDelete); return; }
       const ver = t.closest('[data-file-versions]');
       if (ver) { showVersions(ver.dataset.fileVersions); return; }
+      const edit = t.closest('[data-file-edit]');
+      if (edit) { openEdit(edit.dataset.fileEdit); return; }
       const catDel = t.closest('[data-cat-del]');
       if (catDel) { deleteCategory(catDel.dataset.catDel); return; }
     });
@@ -560,6 +907,34 @@
     if (prev) prev.addEventListener('click', () => loadFiles(_filesState.page - 1));
     const next = document.getElementById('filesNext');
     if (next) next.addEventListener('click', () => loadFiles(_filesState.page + 1));
+
+    // 批量选择
+    root.addEventListener('change', (e) => {
+      if (e.target && e.target.matches('[data-file-check]')) renderBatchBar();
+    });
+    const moveBtn = document.getElementById('filesBatchMove');
+    if (moveBtn) moveBtn.addEventListener('click', () => {
+      ensureBatchMoveModal();
+      const sel = document.getElementById('filesBatchTargetCat');
+      if (sel) {
+        sel.innerHTML = `<option value="">${esc(__('files.uncategorized'))}</option>` +
+          _filesState.categories.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+      }
+      showModal('filesBatchMoveModal');
+    });
+    const clearBtn = document.getElementById('filesBatchClear');
+    if (clearBtn) clearBtn.addEventListener('click', () => {
+      document.querySelectorAll('[data-file-check]:checked').forEach(el => { el.checked = false; });
+      renderBatchBar();
+    });
+    // 维护面板
+    const maintBtn = document.getElementById('filesMaintBtn');
+    if (maintBtn) maintBtn.addEventListener('click', () => {
+      ensureMaintenanceModal();
+      const box = document.getElementById('filesMaintResult');
+      if (box) box.innerHTML = '';
+      showModal('filesMaintModal');
+    });
   }
 
   // 进入 Tab 时初始化（loader 懒加载该模块后调用）

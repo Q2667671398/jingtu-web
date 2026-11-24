@@ -96,6 +96,52 @@ module.exports = function () {
     return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[i]}`;
   }
 
+  // ==================== 下载权限校验 ====================
+  const ADMIN_ROLES = new Set(['admin', 'super_admin']);
+
+  function parseGroupIds(raw) {
+    if (!raw) return [];
+    try {
+      const v = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (!Array.isArray(v)) return [];
+      return v.map(x => parseInt(x, 10)).filter(n => Number.isInteger(n) && n > 0);
+    } catch (e) { return []; }
+  }
+
+  /**
+   * 判断用户能否下载该文件。
+   * - 管理员/超管：永远可以
+   * - access_level=all：所有登录成员
+   * - access_level=admin：仅管理员
+   * - access_level=groups：需属于 allowed_group_ids 中任一权限分组
+   */
+  async function canDownload(file, userId) {
+    if (!userId) return { ok: false, reason: '请先登录' };
+    const pool = getPool();
+    const [urows] = await pool.query(
+      `SELECT role FROM users WHERE id = ? AND deleted_at IS NULL`, [userId]
+    );
+    if (!urows.length) return { ok: false, reason: '用户不存在' };
+    if (ADMIN_ROLES.has(urows[0].role)) return { ok: true };
+
+    const level = file.access_level || 'all';
+    if (level === 'all') return { ok: true };
+    if (level === 'admin') return { ok: false, reason: '该文件仅管理员可下载' };
+    if (level === 'groups') {
+      const gids = parseGroupIds(file.allowed_group_ids);
+      if (!gids.length) return { ok: false, reason: '该文件未配置可下载分组' };
+      const ph = gids.map(() => '?').join(',');
+      const [rows] = await pool.query(
+        `SELECT 1 FROM user_group_membership WHERE user_id = ? AND group_id IN (${ph}) LIMIT 1`,
+        [userId, ...gids]
+      );
+      return rows.length
+        ? { ok: true }
+        : { ok: false, reason: '你所在的用户组无权下载该文件' };
+    }
+    return { ok: false, reason: '权限配置异常' };
+  }
+
   // ==================== 分类 ====================
 
   // 分类列表（含每个分类的文件数），登录可见
@@ -228,6 +274,7 @@ module.exports = function () {
         `SELECT f.id, f.category_id, f.title, f.description, f.original_name, f.file_size,
                 f.ext, f.sha256, f.download_count, f.created_at,
                 f.file_group_id, f.version, f.is_latest,
+                f.access_level, f.allowed_group_ids,
                 (SELECT COUNT(*) FROM group_files v
                   WHERE v.file_group_id = f.file_group_id AND v.is_deleted = 0) AS version_count,
                 c.name AS category_name, u.display_name AS uploader_name
@@ -258,7 +305,9 @@ module.exports = function () {
           fileGroupId: r.file_group_id,
           version: r.version || '1',
           isLatest: !!r.is_latest,
-          versionCount: Number(r.version_count) || 1
+          versionCount: Number(r.version_count) || 1,
+          accessLevel: r.access_level || 'all',
+          allowedGroupIds: parseGroupIds(r.allowed_group_ids)
         })),
         total,
         page,
@@ -309,6 +358,15 @@ module.exports = function () {
 
         // 版本管理：指定 groupId 则作为该组新版本（旧版本 is_latest 置 0）
         const version = String((req.body && req.body.version) || '1').trim().slice(0, 30) || '1';
+        // 下载权限：all / admin / groups（配 allowedGroupIds）
+        const accessLevel = ['all', 'admin', 'groups'].includes(String(req.body && req.body.accessLevel))
+          ? String(req.body.accessLevel) : 'all';
+        const allowedGroupIds = accessLevel === 'groups'
+          ? parseGroupIds(req.body && req.body.allowedGroupIds) : [];
+        if (accessLevel === 'groups' && !allowedGroupIds.length) {
+          safeUnlink(f.path);
+          return sendError(res, 400, ErrorCodes.BAD_REQUEST, '选择「指定分组」时必须至少选一个分组');
+        }
         let groupId = null;
         if (req.body && req.body.groupId !== undefined && req.body.groupId !== '') {
           const gid = parseInt(req.body.groupId, 10);
@@ -330,10 +388,11 @@ module.exports = function () {
         const [r] = await pool.query(
           `INSERT INTO group_files
              (category_id, title, description, original_name, stored_name, file_size, mime_type, ext, sha256, uploaded_by,
-              file_group_id, version, is_latest)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+              file_group_id, version, is_latest, access_level, allowed_group_ids)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
           [categoryId, title, description, f.originalname, f.filename, f.size,
-            f.mimetype || '', ext, sha256, req.session.userId || null, groupId, version]
+            f.mimetype || '', ext, sha256, req.session.userId || null, groupId, version,
+            accessLevel, allowedGroupIds.length ? JSON.stringify(allowedGroupIds) : null]
         );
         // 新上传即该组最新：旧版本置为非最新；若未指定 groupId，则自成一组
         if (groupId) {
@@ -356,6 +415,8 @@ module.exports = function () {
           sha256,
           fileGroupId: groupId,
           version,
+          accessLevel,
+          allowedGroupIds,
           categoryId
         });
       } catch (e) {
@@ -461,17 +522,24 @@ module.exports = function () {
       }
 
       const uploadId = crypto.randomBytes(16).toString('hex');
+      const initAccess = ['all', 'admin', 'groups'].includes(String(b.accessLevel)) ? String(b.accessLevel) : 'all';
+      const initGroupIds = initAccess === 'groups' ? parseGroupIds(b.allowedGroupIds) : [];
+      if (initAccess === 'groups' && !initGroupIds.length) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '选择「指定分组」时必须至少选一个分组');
+      }
       await pool.query(
         `INSERT INTO file_upload_sessions
            (id, uploader_id, file_hash, original_name, total_size, chunk_size, total_chunks,
-            category_id, title, description, version, file_group_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+            category_id, title, description, version, file_group_id, access_level, allowed_group_ids)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
         [uploadId, req.session.userId, fileHash, originalName, totalSize, cs, totalChunks,
           (b.categoryId ? parseInt(b.categoryId, 10) : null),
           String(b.title || '').slice(0, 200),
           String(b.description || ''),
           String(b.version || '1').slice(0, 30),
-          (b.groupId ? parseInt(b.groupId, 10) : null)]
+          (b.groupId ? parseInt(b.groupId, 10) : null),
+          initAccess,
+          initGroupIds.length ? JSON.stringify(initGroupIds) : null]
       );
       try { fs.mkdirSync(path.join(CHUNK_DIR, uploadId), { recursive: true }); } catch (e) { /* ignore */ }
       ok(res, { uploadId, chunkSize: cs, totalChunks, resumed: false, receivedChunks: [] });
@@ -596,10 +664,11 @@ module.exports = function () {
       const [r] = await pool.query(
         `INSERT INTO group_files
            (category_id, title, description, original_name, stored_name, file_size, mime_type, ext, sha256, uploaded_by,
-            file_group_id, version, is_latest)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+            file_group_id, version, is_latest, access_level, allowed_group_ids)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
         [s.category_id, title, s.description || '', s.original_name, storedName, written,
-          '', ext, sha256, s.uploader_id, groupId, s.version || '1']
+          '', ext, sha256, s.uploader_id, groupId, s.version || '1',
+          s.access_level || 'all', s.allowed_group_ids || null]
       );
       if (groupId) {
         await pool.query(
@@ -625,6 +694,168 @@ module.exports = function () {
     } catch (e) { handleError(res, e, '[files/upload/complete]'); }
   });
 
+  // ==================== 批量移动分类（管理员） ====================
+  router.post('/batch-move', requireAdminCompat, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const ids = Array.isArray(b.ids) ? b.ids.map(x => parseInt(x, 10)).filter(n => Number.isInteger(n) && n > 0) : [];
+      if (!ids.length) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '请选择要移动的文件');
+      if (ids.length > 200) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '单次最多移动 200 个文件');
+      // categoryId: 0 或 '' 表示移到未分类
+      let categoryId = null;
+      if (b.categoryId !== undefined && b.categoryId !== '' && b.categoryId !== 0 && b.categoryId !== '0') {
+        const cid = parseInt(b.categoryId, 10);
+        if (Number.isNaN(cid) || cid <= 0) {
+          return sendError(res, 400, ErrorCodes.BAD_REQUEST, '分类参数错误');
+        }
+        const [crows] = await getPool().query(`SELECT id FROM file_categories WHERE id = ?`, [cid]);
+        if (!crows.length) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '分类不存在');
+        categoryId = cid;
+      }
+      const ph = ids.map(() => '?').join(',');
+      const [r] = await getPool().query(
+        `UPDATE group_files SET category_id = ? WHERE id IN (${ph}) AND is_deleted = 0`,
+        [categoryId, ...ids]
+      );
+      try { await logOper(req.session.userId, '批量移动文件分类', `${r.affectedRows} 个 → ${categoryId || '未分类'}`); } catch (e) { /* ignore */ }
+      ok(res, { moved: r.affectedRows });
+    } catch (e) { handleError(res, e, '[files/batch-move]'); }
+  });
+
+  // ==================== 编辑文件（标题/描述/分类/权限，管理员） ====================
+  router.put('/:id', requireAdminCompat, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!id) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT id FROM group_files WHERE id = ? AND is_deleted = 0`, [id]
+      );
+      if (!rows.length) return sendError(res, 404, ErrorCodes.NOT_FOUND, '文件不存在');
+
+      const b = req.body || {};
+      const sets = [];
+      const params = [];
+      if (b.title !== undefined) {
+        const t = String(b.title).trim();
+        if (!t || t.length > 200) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '标题不能为空且不超过200字');
+        sets.push('title = ?'); params.push(t);
+      }
+      if (b.description !== undefined) {
+        sets.push('description = ?'); params.push(String(b.description).slice(0, 10000));
+      }
+      if (b.categoryId !== undefined) {
+        if (b.categoryId === '' || b.categoryId === 0 || b.categoryId === '0' || b.categoryId === null) {
+          sets.push('category_id = ?'); params.push(null);
+        } else {
+          const cid = parseInt(b.categoryId, 10);
+          if (Number.isNaN(cid) || cid <= 0) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '分类参数错误');
+          const [crows] = await pool.query(`SELECT id FROM file_categories WHERE id = ?`, [cid]);
+          if (!crows.length) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '分类不存在');
+          sets.push('category_id = ?'); params.push(cid);
+        }
+      }
+      if (b.accessLevel !== undefined) {
+        const lv = ['all', 'admin', 'groups'].includes(String(b.accessLevel)) ? String(b.accessLevel) : null;
+        if (!lv) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '权限值不合法');
+        const gids = lv === 'groups' ? parseGroupIds(b.allowedGroupIds) : [];
+        if (lv === 'groups' && !gids.length) {
+          return sendError(res, 400, ErrorCodes.BAD_REQUEST, '选择「指定分组」时必须至少选一个分组');
+        }
+        sets.push('access_level = ?'); params.push(lv);
+        sets.push('allowed_group_ids = ?'); params.push(gids.length ? JSON.stringify(gids) : null);
+      }
+      if (!sets.length) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '没有需要更新的字段');
+      params.push(id);
+      await pool.query(`UPDATE group_files SET ${sets.join(', ')} WHERE id = ?`, params);
+      try { await logOper(req.session.userId, '编辑群组文件', `#${id}`); } catch (e) { /* ignore */ }
+      ok(res, { message: '已更新' });
+    } catch (e) { handleError(res, e, '[files:update]'); }
+  });
+
+  // ==================== 维护：清理过期上传会话 ====================
+  // 超过 24h 未完成的会话视为过期，连同分片目录一起清理。
+  router.post('/maintenance/cleanup-sessions', requireAdminCompat, async (req, res) => {
+    try {
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT id FROM file_upload_sessions
+         WHERE status = 'uploading' AND updated_at < NOW() - INTERVAL 24 HOUR
+         LIMIT 500`
+      );
+      let removed = 0;
+      for (const r of rows) {
+        try { fs.rmSync(path.join(CHUNK_DIR, r.id), { recursive: true, force: true }); } catch (e) { /* ignore */ }
+        removed++;
+      }
+      const [del] = await pool.query(
+        `DELETE FROM file_upload_sessions
+         WHERE status = 'uploading' AND updated_at < NOW() - INTERVAL 24 HOUR`
+      );
+      try { await logOper(req.session.userId, '清理过期上传会话', `${del.affectedRows} 个`); } catch (e) { /* ignore */ }
+      ok(res, { removed: del.affectedRows });
+    } catch (e) { handleError(res, e, '[files/maintenance]'); }
+  });
+
+  // ==================== 维护：孤儿文件检测/清理 ====================
+  // mode=scan  仅统计（默认）；mode=clean 物理删除判定为孤儿的文件
+  // 孤儿定义：DB 有记录但磁盘无文件（broken），或磁盘有文件但 DB 无记录（orphan）
+  router.post('/maintenance/orphans', requireAdminCompat, async (req, res) => {
+    try {
+      const mode = (req.body && req.body.mode) === 'clean' ? 'clean' : 'scan';
+      const pool = getPool();
+      // 1) DB 记录但磁盘缺失
+      const [rows] = await pool.query(
+        `SELECT id, stored_name, title FROM group_files WHERE is_deleted = 0`
+      );
+      const broken = [];
+      for (const r of rows) {
+        const name = path.basename(String(r.stored_name || ''));
+        if (!/^[A-Za-z0-9_.-]+$/.test(name)) { broken.push({ id: r.id, name, reason: '非法文件名' }); continue; }
+        if (!fs.existsSync(path.join(FILES_DIR, name))) {
+          broken.push({ id: r.id, name, title: r.title, reason: '磁盘缺失' });
+        }
+      }
+      // 2) 磁盘有文件但 DB 无记录
+      const dbNames = new Set(rows.map(r => path.basename(String(r.stored_name || ''))));
+      const orphans = [];
+      let files = [];
+      try { files = fs.readdirSync(FILES_DIR); } catch (e) { /* ignore */ }
+      for (const f of files) {
+        if (f === '_chunks') continue;
+        const full = path.join(FILES_DIR, f);
+        try { if (!fs.statSync(full).isFile()) continue; } catch (e) { continue; }
+        if (!dbNames.has(f)) orphans.push({ name: f, size: fs.statSync(full).size });
+      }
+
+      let cleaned = 0;
+      if (mode === 'clean') {
+        // 孤儿文件：物理删除（DB 里没有记录，等同于垃圾）
+        for (const o of orphans) {
+          try { fs.unlinkSync(path.join(FILES_DIR, o.name)); cleaned++; } catch (e) { /* ignore */ }
+        }
+        // 破损记录：标记软删除（保留可追溯），文件已不存在无需再删
+        if (broken.length) {
+          const ids = broken.map(b => b.id).filter(Boolean);
+          if (ids.length) {
+            await pool.query(
+              `UPDATE group_files SET is_deleted = 1 WHERE id IN (${ids.map(() => '?').join(',')})`, ids
+            );
+          }
+        }
+        try { await logOper(req.session.userId, '清理孤儿文件', `删除 ${cleaned} 个文件、标记 ${broken.length} 条破损记录`); } catch (e) { /* ignore */ }
+      }
+      ok(res, {
+        mode,
+        brokenCount: broken.length,
+        orphanCount: orphans.length,
+        brokenFiles: broken.slice(0, 50),
+        orphanFiles: orphans.slice(0, 50).map(o => ({ name: o.name, sizeText: humanSize(o.size) })),
+        cleaned
+      });
+    } catch (e) { handleError(res, e, '[files/orphans]'); }
+  });
+
   // ==================== 下载（登录可见，流式 + Range 断点续传 + 计数） ====================
 
   router.get('/:id/download', requireAuth, async (req, res) => {
@@ -632,14 +863,15 @@ module.exports = function () {
       const id = parseInt(req.params.id, 10);
       if (!id) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
       const [rows] = await getPool().query(
-        `SELECT id, original_name, stored_name, file_size, mime_type, is_deleted
+        `SELECT id, original_name, stored_name, file_size, mime_type, is_deleted,
+                access_level, allowed_group_ids
          FROM group_files WHERE id = ?`, [id]
       );
       if (!rows.length || rows[0].is_deleted) {
         return sendError(res, 404, ErrorCodes.NOT_FOUND, '文件不存在或已删除');
       }
       const row = rows[0];
-      // 防路径穿越：先检查原始值不含路径分隔符/上级引用，再用 basename 兜底
+      // 防路径穿越：先做廉价的结构校验（不查库），再做需要查库的权限校验
       const rawStored = String(row.stored_name || '');
       if (rawStored.includes('/') || rawStored.includes('\\') || rawStored.includes('..')) {
         return sendError(res, 400, ErrorCodes.BAD_REQUEST, '文件记录异常');
@@ -652,6 +884,11 @@ module.exports = function () {
       // 确保解析后仍在 FILES_DIR 内
       if (!abs.startsWith(FILES_DIR + path.sep)) {
         return sendError(res, 400, ErrorCodes.BAD_REQUEST, '非法路径');
+      }
+      // 权限校验放在「文件是否存在」之前：避免无权限用户通过 403/404 差异探测文件是否存在
+      const perm = await canDownload(row, req.session.userId);
+      if (!perm.ok) {
+        return sendError(res, 403, ErrorCodes.FORBIDDEN, perm.reason || '无权下载该文件');
       }
       if (!fs.existsSync(abs)) {
         return sendError(res, 404, ErrorCodes.NOT_FOUND, '文件已不在服务器上');
