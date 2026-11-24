@@ -1847,3 +1847,11 @@ body.home-active .tab-indicator { opacity: 0 !important; }
 @media (max-width: 480px) {
   .feed-filter-chip { font-size: 12px; padding: 3px 10px; }
 }
+
+/* G-14 全局搜索：结果摘要片段 */
+.search-result-snippet {
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; color: var(--text2, var(--muted, #6b7280));
+  margin: 0 6px;
+}

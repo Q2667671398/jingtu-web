@@ -703,21 +703,37 @@ async function globalSearchDo(query) {
     const res = await api(`/api/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
     if (res.ok) {
       const data = await res.json();
-      const results = [
-        ...(data.announcements || []).map(a => ({ ...a, type: 'announcements' })),
-        ...(data.events || []).map(e => ({ ...e, type: 'events' })),
-        ...(data.users || []).map(u => ({ ...u, type: 'members' }))
-      ];
+      // G-14：优先用后端已按匹配度排序的 results（覆盖 6 类实体）；
+      // 后端旧版本无 results 时回退到手工拼装三类，保持兼容。
+      const TYPE_META = {
+        announcement: { icon: '📢', cat: __('global.category_announce') },
+        event: { icon: '📅', cat: __('global.category_event') },
+        user: { icon: '👤', cat: __('global.category_member') },
+        member: { icon: '👥', cat: __('global.category_member') },
+        post: { icon: '📝', cat: __('global.category_post') || '动态' },
+        file: { icon: '📦', cat: __('global.category_file') || '文件' }
+      };
+      const results = Array.isArray(data.results) && data.results.length
+        ? data.results
+        : [
+            ...(data.announcements || []).map(a => ({ ...a, type: 'announcement' })),
+            ...(data.events || []).map(e => ({ ...e, type: 'event' })),
+            ...(data.users || []).map(u => ({ ...u, type: 'user', title: u.displayName || u.loginId }))
+          ];
       if (results.length === 0) {
         container.innerHTML = '<div class="text-muted text-12 p-12 text-center">' + __('main.no_results') + '</div>';
       } else {
-        container.innerHTML = results.slice(0, 10).map(r =>
-        `<div class="search-result-item" data-action="global-search-go" data-tab-type="${escAttr(r.type)}">
-          <span class="search-result-type">${r.type === 'announcements' ? '📢' : r.type === 'events' ? '📅' : '👤'}</span>
-          <span class="search-result-title">${esc(r.title || r.preview || r.displayName || r.loginId || '')}</span>
-          <span class="search-result-cat">${r.type === 'announcements' ? __('global.category_announce') : r.type === 'events' ? __('global.category_event') : __('global.category_member')}</span>
-        </div>`
-        ).join('');
+        container.innerHTML = results.slice(0, 12).map(r => {
+          const meta = TYPE_META[r.type] || { icon: '🔍', cat: r.type };
+          const title = r.title || r.preview || r.displayName || r.loginId || '';
+          const snippet = r.snippet || '';
+          return `<div class="search-result-item" data-action="global-search-go" data-tab-type="${escAttr(r.type)}" data-result-id="${escAttr(String(r.id || ''))}">
+            <span class="search-result-type">${meta.icon}</span>
+            <span class="search-result-title">${esc(title)}</span>
+            ${snippet ? `<span class="search-result-snippet">${esc(String(snippet).slice(0, 40))}</span>` : ''}
+            <span class="search-result-cat">${esc(meta.cat)}</span>
+          </div>`;
+        }).join('');
       }
       container.style.display = 'block';
     }
@@ -940,11 +956,24 @@ function _bindMainDelegation() {
       case 'online-users-close':
         closeModal('onlineUsersModal');
         break;
-      case 'global-search-go':
+      case 'global-search-go': {
         searchBlurBlocked = false;
-        switchTab(el.getAttribute('data-tab-type'));
+        // G-14：后端 type 是单数（announcement/event/user/member/post/file），
+        // 而 switchTab 用的是页面 tab id（复数/带 s）。这里做一次显式映射。
+        const TYPE_TO_TAB = {
+          announcement: 'announcements',
+          event: 'events',
+          user: 'members',
+          member: 'members',
+          post: 'posts',
+          file: 'files'
+        };
+        const rawType = el.getAttribute('data-tab-type');
+        const tabId = TYPE_TO_TAB[rawType] || rawType;
+        switchTab(tabId);
         hideSearchResults();
         break;
+      }
     }
   };
   _mainMousedownHandler = function (e) {

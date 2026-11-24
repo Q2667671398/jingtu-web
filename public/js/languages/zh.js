@@ -2234,6 +2234,8 @@ window._LANG_ZH = {
   "global.category_announce": "公告",
   "global.category_event": "活动",
   "global.category_member": "成员",
+  "global.category_post": "动态",
+  "global.category_file": "文件",
   "global.cover": "封面",
   "global.upload_select_images": "请选择要上传的图片",
   "global.video_uploaded": "视频已上传",

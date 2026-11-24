@@ -2127,6 +2127,8 @@ window._LANG_EN = {
   "global.category_announce": "Announcement",
   "global.category_event": "Event",
   "global.category_member": "Member",
+  "global.category_post": "Posts",
+  "global.category_file": "Files",
   "global.cover": "Cover",
   "global.upload_select_images": "<b>Select Images to Upload</b>",
   "global.video_uploaded": "Video Uploaded",

@@ -1993,6 +1993,8 @@ window._LANG_RU = {
   "global.category_announce": "Объявления",
   "global.category_event": "События",
   "global.category_member": "Участник",
+  "global.category_post": "Посты",
+  "global.category_file": "Файлы",
   "global.cover": "Обложка",
   "global.upload_select_images": "Выберите изображения для загрузки",
   "global.video_uploaded": "Видео успешно загружено",

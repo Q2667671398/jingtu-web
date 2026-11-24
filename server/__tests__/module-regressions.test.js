@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 境途同游模块回归静态守卫：只读取源码，不启动服务或连接数据库。
  */
 const fs = require('fs');
@@ -289,7 +289,7 @@ describe('P2-70 pagination consolidation guard', () => {
     expect(offenders).toEqual([]);
   });
 
-  test('paginate() call sites stay pinned at 39 across 23 route files', () => {
+  test('paginate() call sites stay pinned at 40 across 24 route files', () => {
     let totalCalls = 0;
     const filesWithCalls = [];
     for (const name of liveRouteFiles()) {
@@ -297,8 +297,8 @@ describe('P2-70 pagination consolidation guard', () => {
       if (count > 0) filesWithCalls.push(name);
       totalCalls += count;
     }
-    expect(totalCalls).toBe(39);
-    expect(filesWithCalls.length).toBe(23);
+    expect(totalCalls).toBe(40);
+    expect(filesWithCalls.length).toBe(24);
   });
 
   // P2-70 全量回归暴露的教训：路由新增解构 utils 导出（如 paginate）后，

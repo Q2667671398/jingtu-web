@@ -9,7 +9,7 @@
 const express = require('express');
 const { requireAuth } = require('../auth');
 const wsService = require('../ws_service');
-const { getPool, fail, safeError, escapeLike } = require('../utils');
+const { getPool, fail, safeError, escapeLike, paginate } = require('../utils');
 const logger = require('../logger');
 
 module.exports = function createStatsRouter() {
@@ -139,31 +139,104 @@ module.exports = function createStatsRouter() {
   });
 
   // ==================== 全局搜索 ====================
+  // G-14 增强：原来只搜 announcement/event/users 三类。现扩展到 6 类
+  // （+ 动态 posts / 群成员 group_roster / 群组文件 group_files），
+  // 并按「匹配度」排序：完全相等 > 前缀匹配 > 包含匹配。
+  // 兼容性：原有 announcements/events/users 字段保持不变，新增字段为增量。
   router.get('/search', requireAuth, async (req, res) => {
     try {
       const q = (req.query.q || '').trim();
-      if (q.length < 2) return res.json({ announcements: [], events: [], users: [] });
+      if (q.length < 2) {
+        return res.json({
+          announcements: [], events: [], users: [], posts: [], members: [], files: [],
+          results: []
+        });
+      }
       const like = `%${escapeLike(q)}%`;
+      const prefix = `${escapeLike(q)}%`;
+      const exact = q;
+      // 每类返回条数上限：复用统一分页解析（P2-70 禁止手写 parseInt(...limit)）
+      const { pageSize: limit } = paginate(req, { sizeParam: 'limit', defaultSize: 5, maxSize: 20 });
+      const pool = getPool();
 
-      const [announcements] = await getPool().query(
-        `SELECT id, title, content FROM announcement WHERE title LIKE ? ESCAPE '!' OR content LIKE ? ESCAPE '!' ORDER BY create_time DESC LIMIT 5`,
-        [like, like]
+      // 匹配度打分：完全相等 100 / 前缀 60 / 包含 30
+      const score = (col) => `CASE WHEN ${col} = ? THEN 100 WHEN ${col} LIKE ? ESCAPE '!' THEN 60 ELSE 30 END`;
+      const scoreParams = [exact, prefix];
+
+      const [announcements] = await pool.query(
+        `SELECT id, title, content, ${score('title')} AS score
+         FROM announcement
+         WHERE title LIKE ? ESCAPE '!' OR content LIKE ? ESCAPE '!'
+         ORDER BY score DESC, create_time DESC LIMIT ?`,
+        [...scoreParams, like, like, limit]
       );
 
-      const [events] = await getPool().query(
-        `SELECT id, title, description FROM event WHERE (title LIKE ? ESCAPE '!' OR description LIKE ? ESCAPE '!') AND is_archive=0 ORDER BY event_time DESC LIMIT 5`,
-        [like, like]
+      const [events] = await pool.query(
+        `SELECT id, title, description, ${score('title')} AS score
+         FROM event
+         WHERE (title LIKE ? ESCAPE '!' OR description LIKE ? ESCAPE '!') AND is_archive = 0
+         ORDER BY score DESC, event_time DESC LIMIT ?`,
+        [...scoreParams, like, like, limit]
       );
 
-      const [users] = await getPool().query(
-        `SELECT id, login_id AS loginId, display_name AS displayName FROM users WHERE deleted_at IS NULL AND approved=1 AND banned=0 AND (login_id LIKE ? ESCAPE '!' OR display_name LIKE ? ESCAPE '!') LIMIT 5`,
-        [like, like]
+      const [users] = await pool.query(
+        `SELECT id, login_id AS loginId, display_name AS displayName, ${score('display_name')} AS score
+         FROM users
+         WHERE deleted_at IS NULL AND approved = 1 AND banned = 0
+           AND (login_id LIKE ? ESCAPE '!' OR display_name LIKE ? ESCAPE '!')
+         ORDER BY score DESC, display_name ASC LIMIT ?`,
+        [...scoreParams, like, like, limit]
       );
 
-      res.json({ announcements, events, users });
+      // 动态 posts（只搜可见范围，避免泄露私密内容）
+      const [posts] = await pool.query(
+        `SELECT p.id, p.content, p.created_at, u.display_name AS authorName, 30 AS score
+         FROM posts p JOIN users u ON u.id = p.user_id
+         WHERE p.content LIKE ? ESCAPE '!' AND p.visibility IN ('public','members_only')
+           AND u.deleted_at IS NULL
+         ORDER BY p.created_at DESC LIMIT ?`,
+        [like, limit]
+      );
+
+      // 群成员 group_roster
+      const [members] = await pool.query(
+        `SELECT vrchat_id AS vrchatId, display_name AS displayName, trust_level AS trustLevel,
+                ${score('display_name')} AS score
+         FROM group_roster
+         WHERE display_name LIKE ? ESCAPE '!' OR vrchat_id LIKE ? ESCAPE '!'
+         ORDER BY score DESC, display_name ASC LIMIT ?`,
+        [...scoreParams, like, like, limit]
+      );
+
+      // 群组文件 group_files（仅最新版、未删除）
+      const [files] = await pool.query(
+        `SELECT id, title, original_name AS fileName, file_size AS fileSize, ext,
+                ${score('title')} AS score
+         FROM group_files
+         WHERE is_deleted = 0 AND is_latest = 1
+           AND (title LIKE ? ESCAPE '!' OR original_name LIKE ? ESCAPE '!' OR description LIKE ? ESCAPE '!')
+         ORDER BY score DESC, created_at DESC LIMIT ?`,
+        [...scoreParams, like, like, like, limit]
+      );
+
+      // 汇总为统一结果（按 score 降序），供前端统一渲染
+      const results = [];
+      const push = (type, rows, map) => rows.forEach(r => {
+        const m = map(r);
+        if (m) results.push({ type, score: Number(r.score) || 0, ...m });
+      });
+      push('announcement', announcements, r => ({ id: r.id, title: r.title, snippet: (r.content || '').slice(0, 120) }));
+      push('event', events, r => ({ id: r.id, title: r.title, snippet: (r.description || '').slice(0, 120) }));
+      push('user', users, r => ({ id: r.id, title: r.displayName || r.loginId, snippet: r.loginId || '' }));
+      push('post', posts, r => ({ id: r.id, title: r.authorName || '', snippet: (r.content || '').slice(0, 120) }));
+      push('member', members, r => ({ id: r.vrchatId, title: r.displayName || r.vrchatId, snippet: r.vrchatId || '' }));
+      push('file', files, r => ({ id: r.id, title: r.title, snippet: r.fileName || '' }));
+      results.sort((a, b) => b.score - a.score);
+
+      res.json({ announcements, events, users, posts, members, files, results });
     } catch (e) {
       logger.error('[search]', e.message, e.stack);
-      res.json({ announcements: [], events: [], users: [] });
+      res.json({ announcements: [], events: [], users: [], posts: [], members: [], files: [], results: [] });
     }
   });
 

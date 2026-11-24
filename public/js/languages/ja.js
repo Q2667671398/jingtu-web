@@ -1962,6 +1962,8 @@ window._LANG_JA = {
   "global.category_announce": "お知らせ",
   "global.category_event": "イベント",
   "global.category_member": "メンバー",
+  "global.category_post": "投稿",
+  "global.category_file": "ファイル",
   "global.cover": "<b>カバー</b>",
   "global.upload_select_images": "<b>请选择要アップロードする画像</b>",
   "global.video_uploaded": "ビデオがアップロードされました",

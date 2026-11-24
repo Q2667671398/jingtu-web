@@ -1962,6 +1962,8 @@ window._LANG_DE = {
   "global.category_announce": "Ankündigungen",
   "global.category_event": "Event",
   "global.category_member": "Mitglied",
+  "global.category_post": "Beiträge",
+  "global.category_file": "Dateien",
   "global.cover": "Cover",
   "global.upload_select_images": "Wählen Sie die zu hochlade Bild aus",
   "global.video_uploaded": "Video wurde hochgeladen",
