@@ -66,12 +66,18 @@ module.exports = {
   // lines26.96/functions23.06（此前读到的 31% 是 stale coverage-summary，非本次运行）。
   // 门槛从原 20/19/15/8 小幅上调到 22/20/16/10（留足余量，避免 flaky 测试导致 CI 红灯）。
   // 逐文件 floor 同步校正脱节项（见各条注释）。补齐零覆盖大模块是后续工程（见 docs/10 QA-02）。
+  // 2026-11-24（QA-02 复核）：原门槛 22/20/16/10 与实测严重脱节——
+  // Jest 门槛实际计算值（与 text-summary 的展示值略有差异，以门槛报错为准）：
+  // statements 29.9 / branches 18.69 / functions 31.89 / lines ≥33。
+  // 原门槛比实测低约 8~11 个百分点，实测回退十几个点也不会报警，**失去防回退意义**。
+  // 现按「实测向下取整、保留 ~1pt 余量」上调（容忍 flaky/环境差异，但能抓真实回退）。
+  // 若后续补测提升实测值，应同步上调此门槛（棘轮只上不下）。
   coverageThreshold: {
     global: {
-      lines: 22,
-      statements: 20,
-      functions: 16,
-      branches: 10
+      lines: 32,
+      statements: 29,
+      functions: 31,
+      branches: 18
     },
     './auth.js': {
       lines: 81,

@@ -519,4 +519,6 @@
 
   // 供其他模块调用
   window.smartSearch = { open: openPanel, close: closePanel };
+  // 供单元测试直接调用真实实现（避免测试退化为「读源码正则匹配」的脆弱断言）
+  window.__smartSearchInternals = { highlight: highlight, stripTags: stripTags, match: match };
 })();
