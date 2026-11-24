@@ -119,3 +119,9 @@ audit_*_scan.js
 server/[{]try*
 # 根目录散落的发布包（非源码，备份请走 releases 流程）
 /*.zip
+
+# 归档/未接线代码：保留在磁盘供查阅，但不入库（避免污染仓库与误判为活代码）
+_removed-bats/
+public/js/_archive/
+public/js/_unwired/
+server/routes/_archive/
