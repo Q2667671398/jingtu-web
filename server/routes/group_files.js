@@ -204,6 +204,8 @@ module.exports = function () {
       // 条件直接带 f. 前缀（列表查询用别名 f，计数查询无别名走同一段 where 会出错 → 分开拼）
       const where = ['f.is_deleted = 0'];
       const params = [];
+      // 默认只列每组的最新版本；allVersions=1 时列出全部（管理/排查用）
+      if (req.query.allVersions !== '1') where.push('f.is_latest = 1');
       if (req.query.categoryId !== undefined && req.query.categoryId !== '') {
         const cid = parseInt(req.query.categoryId, 10);
         if (Number.isNaN(cid)) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '分类参数错误');
@@ -225,6 +227,9 @@ module.exports = function () {
       const [rows] = await getPool().query(
         `SELECT f.id, f.category_id, f.title, f.description, f.original_name, f.file_size,
                 f.ext, f.sha256, f.download_count, f.created_at,
+                f.file_group_id, f.version, f.is_latest,
+                (SELECT COUNT(*) FROM group_files v
+                  WHERE v.file_group_id = f.file_group_id AND v.is_deleted = 0) AS version_count,
                 c.name AS category_name, u.display_name AS uploader_name
          FROM group_files f
          LEFT JOIN file_categories c ON c.id = f.category_id
@@ -249,7 +254,11 @@ module.exports = function () {
           sha256: r.sha256 || '',
           downloadCount: Number(r.download_count) || 0,
           uploaderName: r.uploader_name || '',
-          createdAt: r.created_at
+          createdAt: r.created_at,
+          fileGroupId: r.file_group_id,
+          version: r.version || '1',
+          isLatest: !!r.is_latest,
+          versionCount: Number(r.version_count) || 1
         })),
         total,
         page,
@@ -298,14 +307,45 @@ module.exports = function () {
         let sha256 = '';
         try { sha256 = await sha256File(f.path); } catch (e) { /* 校验失败不阻塞上传 */ }
 
-        const [r] = await getPool().query(
+        // 版本管理：指定 groupId 则作为该组新版本（旧版本 is_latest 置 0）
+        const version = String((req.body && req.body.version) || '1').trim().slice(0, 30) || '1';
+        let groupId = null;
+        if (req.body && req.body.groupId !== undefined && req.body.groupId !== '') {
+          const gid = parseInt(req.body.groupId, 10);
+          if (Number.isNaN(gid) || gid <= 0) {
+            safeUnlink(f.path);
+            return sendError(res, 400, ErrorCodes.BAD_REQUEST, '文件组参数错误');
+          }
+          const [grows] = await getPool().query(
+            `SELECT file_group_id FROM group_files WHERE id = ? AND is_deleted = 0`, [gid]
+          );
+          if (!grows.length) {
+            safeUnlink(f.path);
+            return sendError(res, 400, ErrorCodes.BAD_REQUEST, '目标文件不存在');
+          }
+          groupId = grows[0].file_group_id || gid;
+        }
+
+        const pool = getPool();
+        const [r] = await pool.query(
           `INSERT INTO group_files
-             (category_id, title, description, original_name, stored_name, file_size, mime_type, ext, sha256, uploaded_by)
-           VALUES (?,?,?,?,?,?,?,?,?,?)`,
+             (category_id, title, description, original_name, stored_name, file_size, mime_type, ext, sha256, uploaded_by,
+              file_group_id, version, is_latest)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)`,
           [categoryId, title, description, f.originalname, f.filename, f.size,
-            f.mimetype || '', ext, sha256, req.session.userId || null]
+            f.mimetype || '', ext, sha256, req.session.userId || null, groupId, version]
         );
-        try { await logOper(req.session.userId, '上传群组文件', `${title} (${humanSize(f.size)})`); } catch (e) { /* ignore */ }
+        // 新上传即该组最新：旧版本置为非最新；若未指定 groupId，则自成一组
+        if (groupId) {
+          await pool.query(
+            `UPDATE group_files SET is_latest = 0 WHERE file_group_id = ? AND id <> ?`,
+            [groupId, r.insertId]
+          );
+        } else {
+          await pool.query(`UPDATE group_files SET file_group_id = ? WHERE id = ?`, [r.insertId, r.insertId]);
+          groupId = r.insertId;
+        }
+        try { await logOper(req.session.userId, '上传群组文件', `${title} v${version} (${humanSize(f.size)})`); } catch (e) { /* ignore */ }
 
         ok(res, {
           id: r.insertId,
@@ -314,6 +354,8 @@ module.exports = function () {
           fileSize: f.size,
           fileSizeText: humanSize(f.size),
           sha256,
+          fileGroupId: groupId,
+          version,
           categoryId
         });
       } catch (e) {
@@ -321,6 +363,266 @@ module.exports = function () {
         handleError(res, e, '[files:upload]');
       }
     });
+  });
+
+  // ==================== 版本历史（登录可见） ====================
+  router.get('/:id/versions', requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!id) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
+      const pool = getPool();
+      const [cur] = await pool.query(
+        `SELECT file_group_id FROM group_files WHERE id = ? AND is_deleted = 0`, [id]
+      );
+      if (!cur.length) return sendError(res, 404, ErrorCodes.NOT_FOUND, '文件不存在');
+      const gid = cur[0].file_group_id || id;
+      const [rows] = await pool.query(
+        `SELECT f.id, f.title, f.original_name, f.file_size, f.ext, f.sha256,
+                f.version, f.is_latest, f.download_count, f.created_at,
+                u.display_name AS uploader_name
+         FROM group_files f
+         LEFT JOIN users u ON u.id = f.uploaded_by
+         WHERE f.file_group_id = ? AND f.is_deleted = 0
+         ORDER BY f.created_at DESC, f.id DESC`,
+        [gid]
+      );
+      res.json({
+        fileGroupId: gid,
+        versions: rows.map(r => ({
+          id: r.id,
+          title: r.title,
+          fileName: r.original_name,
+          fileSize: Number(r.file_size) || 0,
+          fileSizeText: humanSize(r.file_size),
+          ext: r.ext || '',
+          sha256: r.sha256 || '',
+          version: r.version || '1',
+          isLatest: !!r.is_latest,
+          downloadCount: Number(r.download_count) || 0,
+          uploaderName: r.uploader_name || '',
+          createdAt: r.created_at
+        }))
+      });
+    } catch (e) { handleError(res, e, '[files/versions]'); }
+  });
+
+  // ==================== 分片上传（断点续传） ====================
+  // 流程：init（建/复用会话）→ chunk（逐片上传）→ complete（合并成正式文件）
+  // 会话按 (uploader_id, file_hash) 复用，前端中断后重新 init 即拿到已上传进度。
+  const CHUNK_DIR = path.join(FILES_DIR, '_chunks');
+
+  // 1) 初始化/续传查询
+  router.post('/upload/init', requireAdminCompat, async (req, res) => {
+    try {
+      const b = req.body || {};
+      const fileHash = String(b.fileHash || '').trim().toLowerCase();
+      const originalName = String(b.fileName || '').trim();
+      const totalSize = parseInt(b.totalSize, 10);
+      const chunkSize = parseInt(b.chunkSize, 10);
+      if (!/^[a-f0-9]{64}$/.test(fileHash)) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, 'fileHash 必须是 64 位十六进制');
+      }
+      if (!originalName) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '缺少文件名');
+      if (!Number.isFinite(totalSize) || totalSize <= 0 || totalSize > MAX_FILE_SIZE) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, `文件大小不合法（上限 ${humanSize(MAX_FILE_SIZE)}）`);
+      }
+      const ext = path.extname(originalName).toLowerCase();
+      if (BLOCKED_EXTS.has(ext)) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '该扩展名不被允许');
+      if (!ALLOWED_EXTS.has(ext)) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '不支持的文件类型');
+      const cs = (Number.isFinite(chunkSize) && chunkSize >= 256 * 1024 && chunkSize <= 32 * 1024 * 1024)
+        ? chunkSize : 5 * 1024 * 1024;
+      const totalChunks = Math.ceil(totalSize / cs);
+      if (totalChunks > 20000) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '分片数过多，请增大分片');
+
+      const pool = getPool();
+      // 复用未完成会话（同一上传者 + 同一文件哈希）
+      const [exist] = await pool.query(
+        `SELECT id, received_chunks, total_chunks, chunk_size FROM file_upload_sessions
+         WHERE uploader_id = ? AND file_hash = ? AND status = 'uploading'
+           AND total_size = ? AND total_chunks = ?
+         ORDER BY created_at DESC LIMIT 1`,
+        [req.session.userId, fileHash, totalSize, totalChunks]
+      );
+      if (exist.length) {
+        // 返回已收到的分片序号，前端跳过
+        const sid = exist[0].id;
+        const dir = path.join(CHUNK_DIR, sid);
+        let received = [];
+        try {
+          received = fs.readdirSync(dir)
+            .map(n => parseInt(n.split('.')[0], 10))
+            .filter(n => Number.isInteger(n))
+            .sort((a, b) => a - b);
+        } catch (e) { /* 目录不存在=尚未上传任何片 */ }
+        return ok(res, {
+          uploadId: sid, chunkSize: cs, totalChunks, resumed: true,
+          receivedChunks: received
+        });
+      }
+
+      const uploadId = crypto.randomBytes(16).toString('hex');
+      await pool.query(
+        `INSERT INTO file_upload_sessions
+           (id, uploader_id, file_hash, original_name, total_size, chunk_size, total_chunks,
+            category_id, title, description, version, file_group_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [uploadId, req.session.userId, fileHash, originalName, totalSize, cs, totalChunks,
+          (b.categoryId ? parseInt(b.categoryId, 10) : null),
+          String(b.title || '').slice(0, 200),
+          String(b.description || ''),
+          String(b.version || '1').slice(0, 30),
+          (b.groupId ? parseInt(b.groupId, 10) : null)]
+      );
+      try { fs.mkdirSync(path.join(CHUNK_DIR, uploadId), { recursive: true }); } catch (e) { /* ignore */ }
+      ok(res, { uploadId, chunkSize: cs, totalChunks, resumed: false, receivedChunks: [] });
+    } catch (e) { handleError(res, e, '[files/upload/init]'); }
+  });
+
+  // 2) 上传单个分片（原始二进制体，index 在查询串）
+  router.post('/upload/chunk', requireAdminCompat, async (req, res) => {
+    try {
+      const uploadId = String(req.query.uploadId || '').trim();
+      const index = parseInt(req.query.index, 10);
+      if (!/^[a-f0-9]{32}$/.test(uploadId)) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, 'uploadId 不合法');
+      }
+      if (!Number.isInteger(index) || index < 0) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '分片序号不合法');
+      }
+      const pool = getPool();
+      const [sess] = await pool.query(
+        `SELECT id, uploader_id, total_chunks, status FROM file_upload_sessions WHERE id = ?`, [uploadId]
+      );
+      if (!sess.length) return sendError(res, 404, ErrorCodes.NOT_FOUND, '上传会话不存在或已过期');
+      if (sess[0].uploader_id !== req.session.userId) {
+        return sendError(res, 403, ErrorCodes.FORBIDDEN, '无权操作该上传会话');
+      }
+      if (sess[0].status !== 'uploading') {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '该会话已结束');
+      }
+      if (index >= sess[0].total_chunks) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '分片序号越界');
+      }
+      const dir = path.join(CHUNK_DIR, uploadId);
+      try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { /* ignore */ }
+      const partPath = path.join(dir, `${index}.part`);
+
+      // 直接流式写盘（不占内存）
+      await new Promise((resolve, reject) => {
+        const ws = fs.createWriteStream(partPath);
+        let bytes = 0;
+        req.on('data', (c) => { bytes += c.length; });
+        req.pipe(ws);
+        ws.on('finish', () => resolve(bytes));
+        ws.on('error', reject);
+        req.on('error', reject);
+      });
+      // 统计已收分片数（去重后）
+      let receivedCount = 0;
+      try { receivedCount = fs.readdirSync(dir).filter(n => n.endsWith('.part')).length; } catch (e) { /* ignore */ }
+      await pool.query(
+        `UPDATE file_upload_sessions SET received_chunks = ? WHERE id = ?`, [receivedCount, uploadId]
+      );
+      ok(res, { index, receivedChunks: receivedCount, totalChunks: sess[0].total_chunks });
+    } catch (e) { handleError(res, e, '[files/upload/chunk]'); }
+  });
+
+  // 3) 合并分片 → 正式文件入库
+  router.post('/upload/complete', requireAdminCompat, async (req, res) => {
+    try {
+      const uploadId = String((req.body && req.body.uploadId) || '').trim();
+      if (!/^[a-f0-9]{32}$/.test(uploadId)) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, 'uploadId 不合法');
+      }
+      const pool = getPool();
+      const [sess] = await pool.query(
+        `SELECT * FROM file_upload_sessions WHERE id = ?`, [uploadId]
+      );
+      if (!sess.length) return sendError(res, 404, ErrorCodes.NOT_FOUND, '上传会话不存在');
+      const s = sess[0];
+      if (s.uploader_id !== req.session.userId) {
+        return sendError(res, 403, ErrorCodes.FORBIDDEN, '无权操作该上传会话');
+      }
+      if (s.status === 'completed') return sendError(res, 400, ErrorCodes.BAD_REQUEST, '该会话已完成');
+
+      const dir = path.join(CHUNK_DIR, uploadId);
+      const parts = [];
+      for (let i = 0; i < s.total_chunks; i++) {
+        const p = path.join(dir, `${i}.part`);
+        if (!fs.existsSync(p)) {
+          return sendError(res, 400, ErrorCodes.BAD_REQUEST, `缺少第 ${i} 个分片，请重传`);
+        }
+        parts.push(p);
+      }
+
+      // 合并到最终文件
+      const ext = path.extname(s.original_name || '').toLowerCase().slice(0, 20);
+      const storedName = `${Date.now()}_${crypto.randomBytes(8).toString('hex')}${ext}`;
+      const finalPath = path.join(FILES_DIR, storedName);
+      let written = 0;
+      await new Promise((resolve, reject) => {
+        const ws = fs.createWriteStream(finalPath);
+        ws.on('error', reject);
+        ws.on('finish', resolve);
+        const pipeNext = (i) => {
+          if (i >= parts.length) { ws.end(); return; }
+          const rs = fs.createReadStream(parts[i]);
+          rs.on('error', reject);
+          rs.on('end', () => { written += fs.statSync(parts[i]).size; pipeNext(i + 1); });
+          rs.pipe(ws, { end: false });
+        };
+        pipeNext(0);
+      });
+
+      // 校验哈希
+      let sha256 = '';
+      try { sha256 = await sha256File(finalPath); } catch (e) { /* ignore */ }
+      if (sha256 && sha256 !== s.file_hash) {
+        safeUnlink(finalPath);
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST,
+          '文件校验失败（SHA256 不匹配），可能分片损坏，请重新上传');
+      }
+
+      // 入库（版本逻辑同单次上传）
+      let groupId = s.file_group_id || null;
+      if (groupId) {
+        const [grows] = await pool.query(
+          `SELECT file_group_id FROM group_files WHERE id = ? AND is_deleted = 0`, [groupId]
+        );
+        if (grows.length) groupId = grows[0].file_group_id || groupId;
+        else groupId = null;
+      }
+      const title = (s.title || '').trim() || s.original_name;
+      const [r] = await pool.query(
+        `INSERT INTO group_files
+           (category_id, title, description, original_name, stored_name, file_size, mime_type, ext, sha256, uploaded_by,
+            file_group_id, version, is_latest)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+        [s.category_id, title, s.description || '', s.original_name, storedName, written,
+          '', ext, sha256, s.uploader_id, groupId, s.version || '1']
+      );
+      if (groupId) {
+        await pool.query(
+          `UPDATE group_files SET is_latest = 0 WHERE file_group_id = ? AND id <> ?`, [groupId, r.insertId]
+        );
+      } else {
+        await pool.query(`UPDATE group_files SET file_group_id = ? WHERE id = ?`, [r.insertId, r.insertId]);
+        groupId = r.insertId;
+      }
+      await pool.query(
+        `UPDATE file_upload_sessions SET status = 'completed', received_chunks = total_chunks WHERE id = ?`,
+        [uploadId]
+      );
+      // 清理分片目录
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
+      try { await logOper(s.uploader_id, '上传群组文件(分片)', `${title} v${s.version} (${humanSize(written)})`); } catch (e) { /* ignore */ }
+
+      ok(res, {
+        id: r.insertId, title, fileName: s.original_name,
+        fileSize: written, fileSizeText: humanSize(written),
+        sha256, fileGroupId: groupId, version: s.version || '1'
+      });
+    } catch (e) { handleError(res, e, '[files/upload/complete]'); }
   });
 
   // ==================== 下载（登录可见，流式 + Range 断点续传 + 计数） ====================

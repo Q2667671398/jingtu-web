@@ -1118,10 +1118,38 @@ async function initDatabase() {
         download_count INT DEFAULT 0 COMMENT '下载次数',
         is_deleted TINYINT DEFAULT 0 COMMENT '软删除',
         uploaded_by INT NULL COMMENT '上传者 users.id',
+        file_group_id INT NULL COMMENT '同组文件 ID（多版本归组；NULL=未归组，首次上传后回填自身 id）',
+        version VARCHAR(30) DEFAULT '1' COMMENT '版本号（语义化，如 1.0.0）',
+        is_latest TINYINT DEFAULT 1 COMMENT '是否该组最新版本（列表默认只显示最新）',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_category(category_id),
         INDEX idx_deleted_created(is_deleted, created_at),
+        INDEX idx_group_latest(file_group_id, is_latest),
         UNIQUE KEY uk_stored(stored_name)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+      // ==================== 群组文件分片上传（断点续传） ====================
+      // 大文件（安装包可达 2GB）分片上传：init 建会话 → 逐片上传 → complete 合并。
+      // 同一 (uploader_id, file_hash) 的未完成会话可复用，实现断点续传。
+      `CREATE TABLE IF NOT EXISTS file_upload_sessions (
+        id VARCHAR(40) NOT NULL PRIMARY KEY COMMENT '上传会话 ID（随机）',
+        uploader_id INT NOT NULL COMMENT '上传者 users.id',
+        file_hash VARCHAR(64) NOT NULL COMMENT '整文件 SHA256（前端计算，用于识别同一文件续传）',
+        original_name VARCHAR(255) NOT NULL COMMENT '原始文件名',
+        total_size BIGINT NOT NULL COMMENT '总字节数',
+        chunk_size INT NOT NULL COMMENT '分片大小（字节）',
+        total_chunks INT NOT NULL COMMENT '分片总数',
+        received_chunks INT DEFAULT 0 COMMENT '已完成分片数',
+        category_id INT NULL COMMENT '目标分类',
+        title VARCHAR(200) DEFAULT '' COMMENT '展示标题',
+        description TEXT COMMENT '说明',
+        version VARCHAR(30) DEFAULT '1' COMMENT '版本号',
+        file_group_id INT NULL COMMENT '归入的文件组（多版本时）',
+        status VARCHAR(20) DEFAULT 'uploading' COMMENT 'uploading|completed|aborted',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_uploader_hash(uploader_id, file_hash),
+        INDEX idx_status_updated(status, updated_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
       // ==================== 好友系统 (V7.10) ====================
@@ -1672,6 +1700,37 @@ async function initDatabase() {
       } else {
         logger.warn('db-init', '  ⚠️ world_visit_log index migration:', e.message);
       }
+    }
+
+    // 群组文件库：多版本支持（老库补列 + 索引）。MySQL 5.7 无 IF NOT EXISTS，忽略重复列/索引错误。
+    for (const sql of [
+      `ALTER TABLE group_files ADD COLUMN file_group_id INT NULL COMMENT '同组文件 ID（多版本归组）'`,
+      `ALTER TABLE group_files ADD COLUMN version VARCHAR(30) DEFAULT '1' COMMENT '版本号'`,
+      `ALTER TABLE group_files ADD COLUMN is_latest TINYINT DEFAULT 1 COMMENT '是否最新版本'`,
+      `ALTER TABLE group_files ADD INDEX idx_group_latest(file_group_id, is_latest)`,
+    ]) {
+      try {
+        await holder.pool.query(sql);
+        logger.info('db-init', `  ✓ 迁移: group_files ${sql.replace(/^ALTER TABLE group_files /, '').slice(0, 60)}`);
+      } catch (e) {
+        if ([1060, 1061, 1091].includes(e.errno) ||
+            ['ER_DUP_FIELDNAME', 'ER_DUP_KEYNAME', 'ER_CANT_DROP_FIELD_OR_KEY'].includes(e.code)) {
+          /* 已存在：无需处理 */
+        } else {
+          logger.warn('db-init', '  ⚠️ group_files migration:', e.message);
+        }
+      }
+    }
+    // 存量文件回填 file_group_id = 自身 id（各自成组，版本 1）
+    try {
+      const [bf] = await holder.pool.query(
+        `UPDATE group_files SET file_group_id = id WHERE file_group_id IS NULL`
+      );
+      if (bf.affectedRows > 0) {
+        logger.info('db-init', `  ✓ 迁移: group_files 存量回填 file_group_id（${bf.affectedRows} 行）`);
+      }
+    } catch (e) {
+      logger.warn('db-init', '  ⚠️ group_files backfill:', e.message);
     }
 
     // V6.6: 为 users 表添加安全列（使用 try/catch 兼容 MySQL 5.7）
