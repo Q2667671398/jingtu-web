@@ -1790,3 +1790,23 @@ body.home-active .tab-indicator { opacity: 0 !important; }
 @media (max-width: 768px) {
   .files-batch-bar { flex-direction: column; align-items: flex-start; }
 }
+
+/* 视图切换标签 */
+.files-view-tabs {
+  display: inline-flex; gap: 2px; padding: 3px;
+  border-radius: 10px; border: 1px solid var(--border, #e5e7eb);
+  background: var(--bg-secondary, rgba(124,92,252,.05));
+}
+.files-view-tab {
+  padding: 4px 12px; border: none; border-radius: 8px; cursor: pointer;
+  font-size: 13px; font-weight: 600;
+  background: transparent; color: var(--text2, var(--muted, #6b7280));
+  transition: background-color .15s ease, color .15s ease;
+}
+.files-view-tab:hover:not(.active) { background: var(--hover, rgba(0,0,0,.05)); }
+.files-view-tab.active { background: var(--accent, #7c5cfc); color: #fff; }
+/* 排行榜名次 */
+.files-rank {
+  flex: 0 0 34px; text-align: center;
+  font-size: 15px; font-weight: 800; color: var(--accent, #7c5cfc);
+}

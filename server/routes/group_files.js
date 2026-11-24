@@ -142,6 +142,107 @@ module.exports = function () {
     return { ok: false, reason: '权限配置异常' };
   }
 
+  // ==================== 下载排行榜（登录可见） ====================
+  // 注意：本路由必须声明在 `/:id` 类路由之前，否则 "ranking" 会被当成 :id
+  router.get('/ranking', requireAuth, async (req, res) => {
+    try {
+      const topN = Math.min(Math.max(parseInt(req.query.top, 10) || 10, 1), 50);
+      const days = Math.min(Math.max(parseInt(req.query.days, 10) || 0, 0), 3650);
+      const pool = getPool();
+      const where = ['f.is_deleted = 0', 'f.download_count > 0'];
+      const params = [];
+      if (days > 0) {
+        where.push('f.created_at >= NOW() - INTERVAL ? DAY');
+        params.push(days);
+      }
+      const [rows] = await pool.query(
+        `SELECT f.id, f.title, f.original_name, f.file_size, f.ext, f.download_count, f.version,
+                c.name AS category_name
+         FROM group_files f
+         LEFT JOIN file_categories c ON c.id = f.category_id
+         WHERE ${where.join(' AND ')}
+         ORDER BY f.download_count DESC, f.id DESC
+         LIMIT ?`,
+        [...params, topN]
+      );
+      res.json({
+        days,
+        items: rows.map((r, i) => ({
+          rank: i + 1,
+          id: r.id,
+          title: r.title,
+          fileName: r.original_name,
+          fileSizeText: humanSize(r.file_size),
+          ext: r.ext || '',
+          version: r.version || '1',
+          downloadCount: Number(r.download_count) || 0,
+          categoryName: r.category_name || ''
+        }))
+      });
+    } catch (e) { handleError(res, e, '[files/ranking]'); }
+  });
+
+  // ==================== 我的收藏（登录可见） ====================
+  // 同样必须在 `/:id` 之前
+  router.get('/favorites', requireAuth, async (req, res) => {
+    try {
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT f.id, f.title, f.original_name, f.file_size, f.ext, f.version,
+                f.download_count, f.created_at, fav.created_at AS favorited_at,
+                c.name AS category_name
+         FROM file_favorites fav
+         JOIN group_files f ON f.id = fav.file_id AND f.is_deleted = 0
+         LEFT JOIN file_categories c ON c.id = f.category_id
+         WHERE fav.user_id = ?
+         ORDER BY fav.created_at DESC, f.id DESC
+         LIMIT 200`,
+        [req.session.userId]
+      );
+      res.json({
+        items: rows.map(r => ({
+          id: r.id,
+          title: r.title,
+          fileName: r.original_name,
+          fileSizeText: humanSize(r.file_size),
+          ext: r.ext || '',
+          version: r.version || '1',
+          downloadCount: Number(r.download_count) || 0,
+          categoryName: r.category_name || '',
+          favoritedAt: r.favorited_at
+        }))
+      });
+    } catch (e) { handleError(res, e, '[files/favorites]'); }
+  });
+
+  // 切换收藏状态（幂等：已收藏则取消）
+  router.post('/favorites/toggle', requireAuth, async (req, res) => {
+    try {
+      const fileId = parseInt(req.body && req.body.fileId, 10);
+      if (!fileId || fileId <= 0) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '文件 ID 不合法');
+      const pool = getPool();
+      const [frows] = await pool.query(
+        `SELECT id FROM group_files WHERE id = ? AND is_deleted = 0`, [fileId]
+      );
+      if (!frows.length) return sendError(res, 404, ErrorCodes.NOT_FOUND, '文件不存在');
+      const [exist] = await pool.query(
+        `SELECT id FROM file_favorites WHERE user_id = ? AND file_id = ?`,
+        [req.session.userId, fileId]
+      );
+      let favorited;
+      if (exist.length) {
+        await pool.query(`DELETE FROM file_favorites WHERE user_id = ? AND file_id = ?`,
+          [req.session.userId, fileId]);
+        favorited = false;
+      } else {
+        await pool.query(`INSERT INTO file_favorites (user_id, file_id) VALUES (?,?)`,
+          [req.session.userId, fileId]);
+        favorited = true;
+      }
+      ok(res, { favorited });
+    } catch (e) { handleError(res, e, '[files/favorites/toggle]'); }
+  });
+
   // ==================== 分类 ====================
 
   // 分类列表（含每个分类的文件数），登录可见
@@ -277,6 +378,8 @@ module.exports = function () {
                 f.access_level, f.allowed_group_ids,
                 (SELECT COUNT(*) FROM group_files v
                   WHERE v.file_group_id = f.file_group_id AND v.is_deleted = 0) AS version_count,
+                EXISTS(SELECT 1 FROM file_favorites fav
+                       WHERE fav.file_id = f.id AND fav.user_id = ?) AS is_favorited,
                 c.name AS category_name, u.display_name AS uploader_name
          FROM group_files f
          LEFT JOIN file_categories c ON c.id = f.category_id
@@ -284,7 +387,7 @@ module.exports = function () {
          ${whereSql}
          ORDER BY f.created_at DESC, f.id DESC
          LIMIT ? OFFSET ?`,
-        [...params, pageSize, offset]
+        [req.session.userId, ...params, pageSize, offset]
       );
 
       res.json({
@@ -307,7 +410,8 @@ module.exports = function () {
           isLatest: !!r.is_latest,
           versionCount: Number(r.version_count) || 1,
           accessLevel: r.access_level || 'all',
-          allowedGroupIds: parseGroupIds(r.allowed_group_ids)
+          allowedGroupIds: parseGroupIds(r.allowed_group_ids),
+          isFavorited: !!r.is_favorited
         })),
         total,
         page,

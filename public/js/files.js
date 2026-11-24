@@ -9,7 +9,7 @@
   if (window.__filesModuleInited) return;
   window.__filesModuleInited = true;
 
-  let _filesState = { categories: [], categoryId: '', q: '', page: 1, pageSize: 20, totalPages: 1 };
+  let _filesState = { categories: [], categoryId: '', q: '', page: 1, pageSize: 20, totalPages: 1, view: 'list' };
   let _filesSeq = 0;
   let _uploading = false;
 
@@ -101,6 +101,7 @@
               </div>
             </div>
             <div class="files-actions">
+              <button type="button" class="btn btn-sm ${f.isFavorited ? 'btn-accent' : 'btn-outline'}" data-file-fav="${f.id}" title="${esc(__('files.favorite') || '收藏')}">${f.isFavorited ? '★' : '☆'}</button>
               <button type="button" class="btn btn-sm btn-accent" data-file-download="${f.id}">⬇ ${esc(__('files.download'))}</button>
               ${histBtn}
               ${canDel ? `<button type="button" class="btn btn-sm btn-outline" data-file-edit="${f.id}">✏️ ${esc(__('common.edit') || '编辑')}</button>` : ''}
@@ -722,6 +723,99 @@
     }
   }
 
+  // ---------- 收藏切换 ----------
+  async function toggleFavorite(fileId) {
+    try {
+      const res = await api('/api/group-files/favorites/toggle', {
+        method: 'POST', body: { fileId: Number(fileId) }
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(errText(d) || __('files.fav_failed') || '操作失败', 'error'); return; }
+      const btn = document.querySelector(`[data-file-fav="${fileId}"]`);
+      if (btn) {
+        btn.textContent = d.favorited ? '★' : '☆';
+        btn.classList.toggle('btn-accent', !!d.favorited);
+        btn.classList.toggle('btn-outline', !d.favorited);
+      }
+      // 同步本地快照，避免重新渲染时状态回退
+      const item = (window.__filesLastList || []).find(x => String(x.id) === String(fileId));
+      if (item) item.isFavorited = !!d.favorited;
+      if (_filesState.view === 'favorites') loadFiles(1);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  // ---------- 排行榜视图 ----------
+  async function loadRanking() {
+    const el = document.getElementById('filesList');
+    if (!el) return;
+    el.innerHTML = `<div class="text-muted2 p-16">${esc(__('common.loading'))}</div>`;
+    try {
+      const res = await api('/api/group-files/ranking?top=20', { method: 'GET' });
+      if (!res.ok) { el.innerHTML = `<div class="text-muted2 p-16">${esc(__('files.load_failed'))}</div>`; return; }
+      const d = await res.json().catch(() => ({}));
+      const items = d.items || [];
+      if (!items.length) { el.innerHTML = `<div class="files-empty">${esc(__('files.ranking_empty') || '暂无下载记录')}</div>`; return; }
+      el.innerHTML = items.map(it => `
+        <div class="files-item" data-file-id="${it.id}">
+          <span class="files-rank">#${it.rank}</span>
+          <div class="files-icon">${fileIcon(it.ext)}</div>
+          <div class="files-main">
+            <div class="files-title">${esc(it.title)} <span class="files-ver-badge">v${esc(it.version)}</span></div>
+            <div class="files-meta">
+              <span>${esc(it.fileName)}</span><span>·</span><span>${esc(it.fileSizeText)}</span>
+              ${it.categoryName ? `<span>·</span><span>${esc(it.categoryName)}</span>` : ''}
+              <span>·</span><b>⬇ ${it.downloadCount}</b>
+            </div>
+          </div>
+          <div class="files-actions">
+            <button type="button" class="btn btn-sm btn-accent" data-file-download="${it.id}">⬇ ${esc(__('files.download'))}</button>
+          </div>
+        </div>`).join('');
+      const pager = document.getElementById('filesPager');
+      if (pager) pager.style.display = 'none';
+      const bar = document.getElementById('filesBatchBar');
+      if (bar) bar.style.display = 'none';
+    } catch (e) {
+      el.innerHTML = `<div class="text-muted2 p-16">${esc(__('files.load_failed'))}</div>`;
+    }
+  }
+
+  // ---------- 我的收藏视图 ----------
+  async function loadFavorites() {
+    const el = document.getElementById('filesList');
+    if (!el) return;
+    el.innerHTML = `<div class="text-muted2 p-16">${esc(__('common.loading'))}</div>`;
+    try {
+      const res = await api('/api/group-files/favorites', { method: 'GET' });
+      if (!res.ok) { el.innerHTML = `<div class="text-muted2 p-16">${esc(__('files.load_failed'))}</div>`; return; }
+      const d = await res.json().catch(() => ({}));
+      const items = d.items || [];
+      if (!items.length) { el.innerHTML = `<div class="files-empty">${esc(__('files.fav_empty') || '还没有收藏任何文件')}</div>`; return; }
+      el.innerHTML = items.map(it => `
+        <div class="files-item" data-file-id="${it.id}">
+          <div class="files-icon">${fileIcon(it.ext)}</div>
+          <div class="files-main">
+            <div class="files-title">${esc(it.title)} <span class="files-ver-badge">v${esc(it.version)}</span></div>
+            <div class="files-meta">
+              <span>${esc(it.fileName)}</span><span>·</span><span>${esc(it.fileSizeText)}</span>
+              ${it.categoryName ? `<span>·</span><span>${esc(it.categoryName)}</span>` : ''}
+              <span>·</span><span>⬇ ${it.downloadCount}</span>
+            </div>
+          </div>
+          <div class="files-actions">
+            <button type="button" class="btn btn-sm btn-accent" data-file-fav="${it.id}" title="${esc(__('files.unfavorite') || '取消收藏')}">★</button>
+            <button type="button" class="btn btn-sm btn-accent" data-file-download="${it.id}">⬇ ${esc(__('files.download'))}</button>
+          </div>
+        </div>`).join('');
+      const pager = document.getElementById('filesPager');
+      if (pager) pager.style.display = 'none';
+      const bar = document.getElementById('filesBatchBar');
+      if (bar) bar.style.display = 'none';
+    } catch (e) {
+      el.innerHTML = `<div class="text-muted2 p-16">${esc(__('files.load_failed'))}</div>`;
+    }
+  }
+
   // ---------- 版本历史弹窗 ----------
   function ensureVersionsModal() {
     if (document.getElementById('fileVersionsModal')) return;
@@ -868,6 +962,8 @@
       if (ver) { showVersions(ver.dataset.fileVersions); return; }
       const edit = t.closest('[data-file-edit]');
       if (edit) { openEdit(edit.dataset.fileEdit); return; }
+      const fav = t.closest('[data-file-fav]');
+      if (fav) { toggleFavorite(fav.dataset.fileFav); return; }
       const catDel = t.closest('[data-cat-del]');
       if (catDel) { deleteCategory(catDel.dataset.catDel); return; }
     });
@@ -907,6 +1003,23 @@
     if (prev) prev.addEventListener('click', () => loadFiles(_filesState.page - 1));
     const next = document.getElementById('filesNext');
     if (next) next.addEventListener('click', () => loadFiles(_filesState.page + 1));
+
+    // 视图切换（列表 / 下载排行 / 我的收藏）
+    root.addEventListener('click', (e) => {
+      const tab = e.target && e.target.closest ? e.target.closest('[data-files-view]') : null;
+      if (!tab) return;
+      const view = tab.dataset.filesView;
+      _filesState.view = view;
+      document.querySelectorAll('[data-files-view]').forEach(b => {
+        b.classList.toggle('active', b.dataset.filesView === view);
+      });
+      // 排行榜/收藏视图隐藏分类栏与批量栏
+      const catBar = document.getElementById('filesCatBar');
+      if (catBar) catBar.style.display = view === 'list' ? '' : 'none';
+      if (view === 'ranking') loadRanking();
+      else if (view === 'favorites') loadFavorites();
+      else loadFiles(1);
+    });
 
     // 批量选择
     root.addEventListener('change', (e) => {

@@ -1130,6 +1130,18 @@ async function initDatabase() {
         UNIQUE KEY uk_stored(stored_name)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
+      // ==================== 群组文件收藏 ====================
+      // 用户收藏常用文件（同一用户对同一文件只收藏一次）
+      `CREATE TABLE IF NOT EXISTS file_favorites (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL COMMENT '用户 users.id',
+        file_id INT NOT NULL COMMENT '文件 group_files.id',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_user_file(user_id, file_id),
+        INDEX idx_user(user_id),
+        INDEX idx_file(file_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
       // ==================== 群组文件分片上传（断点续传） ====================
       // 大文件（安装包可达 2GB）分片上传：init 建会话 → 逐片上传 → complete 合并。
       // 同一 (uploader_id, file_hash) 的未完成会话可复用，实现断点续传。
