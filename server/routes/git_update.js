@@ -299,7 +299,8 @@ router.post('/admin/git-update', requireSuperAdmin, async (req, res) => {
 });
 
 // ==================== 仅重启服务（应用已拉取但未重启的场景） ====================
-router.post('/admin/git-restart', requireSuperAdmin, async (req, res) => {
+// BE-01：本处理器无 await，去掉多余的 async，避免无意义的未捕获 promise 面
+router.post('/admin/git-restart', requireSuperAdmin, (req, res) => {
   scheduleRestart();
   ok(res, { restarting: true, message: '服务正在自动重启（约 3 秒中断），请稍后刷新页面' });
 });

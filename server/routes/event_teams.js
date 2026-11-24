@@ -16,16 +16,28 @@ router.get('/:eventId', requireAuth, async (req, res) => {
       [req.params.eventId]
     );
 
-    for (const team of teams) {
-      const [members] = await pool.query(
-        `SELECT etm.user_id, u.display_name, u.avatar_type, u.custom_avatar_path, u.vrchat_avatar_url 
+    // DB-02：原来每个队伍单独查一次成员（N 队 = N 次往返）。改为一次查全部队伍成员再分组。
+    if (teams.length) {
+      const teamIds = teams.map(t => t.id);
+      const [allMembers] = await pool.query(
+        `SELECT etm.team_id, etm.user_id, u.display_name, u.avatar_type, u.custom_avatar_path, u.vrchat_avatar_url
          FROM event_team_members etm
          LEFT JOIN users u ON etm.user_id = u.id
-         WHERE etm.team_id = ?`,
-        [team.id]
+         WHERE etm.team_id IN (${teamIds.map(() => '?').join(',')})`,
+        teamIds
       );
-      team.members = members.map(m => ({ ...m, avatarUrl: getAvatarUrl(m) }));
-      team.memberCount = members.length;
+      const byTeam = new Map();
+      for (const m of allMembers) {
+        if (!byTeam.has(m.team_id)) byTeam.set(m.team_id, []);
+        byTeam.get(m.team_id).push({ ...m, avatarUrl: getAvatarUrl(m) });
+      }
+      for (const team of teams) {
+        const members = byTeam.get(team.id) || [];
+        team.members = members;
+        team.memberCount = members.length;
+      }
+    } else {
+      for (const team of teams) { team.members = []; team.memberCount = 0; }
     }
 
     res.json({ teams });

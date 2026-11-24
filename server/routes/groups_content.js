@@ -248,33 +248,44 @@ module.exports = function (getVRCCookieFn, GROUP_ID, getUserVRCCookieFn) {
       // displayName/avatarUrl/信任等级，并关联本地 vrc_blacklist 的 reason 详情，
       // 让「群黑名单」与后台「VRChat黑名单」联动展示同一批数据（名字/头像/详情俱全）。
       const bans = [];
+      // DB-02：原实现每条封禁最多查 2 次库（名册+黑名单 reason）。改为循环前批量预取。
+      const vids = data.map(b => b && b.userId).filter(v => v && /^usr_/i.test(String(v)));
+      const rosterMap = new Map();   // vrchat_id -> { memberName, avatarUrl, trustLevel }
+      const reasonMap = new Map();   // vrchat_id -> reason
+      const BATCH = 500;
+      for (let i = 0; i < vids.length; i += BATCH) {
+        const slice = vids.slice(i, i + BATCH);
+        if (!slice.length) continue;
+        const ph = slice.map(() => '?').join(',');
+        try {
+          const [rows] = await getPool().query(
+            `SELECT vrchat_id, display_name AS memberName, avatar_url AS avatarUrl, trust_level AS trustLevel
+             FROM group_roster WHERE vrchat_id IN (${ph})`, slice
+          );
+          for (const r of rows) {
+            rosterMap.set(String(r.vrchat_id), {
+              memberName: r.memberName || null,
+              avatarUrl: r.avatarUrl || null,
+              trustLevel: r.trustLevel || null
+            });
+          }
+        } catch (e) { /* 预取失败不阻塞 */ }
+        try {
+          const [rows] = await getPool().query(
+            `SELECT vrchat_id, reason FROM vrc_blacklist
+             WHERE vrchat_id IN (${ph}) AND reason IS NOT NULL AND reason != ''`, slice
+          );
+          for (const r of rows) reasonMap.set(String(r.vrchat_id), r.reason);
+        } catch (e) { /* 预取失败不阻塞 */ }
+      }
+
       for (const b of data) {
         const vid = b && b.userId;
         let ext = { memberName: null, avatarUrl: null, trustLevel: null, reason: null };
         if (vid && /^usr_/i.test(vid)) {
-          const [rows] = await getPool().query(
-            `SELECT gr.display_name AS memberName, gr.avatar_url AS avatarUrl, gr.trust_level AS trustLevel,
-                    bl.reason
-             FROM group_roster gr
-             LEFT JOIN vrc_blacklist bl ON bl.vrchat_id = gr.vrchat_id
-             WHERE gr.vrchat_id = ?`,
-            [vid]
-          );
-          if (rows.length > 0) {
-            const r = rows[0];
-            ext = {
-              memberName: r.memberName || null,
-              avatarUrl: r.avatarUrl || null,
-              trustLevel: r.trustLevel || null,
-              reason: r.reason || null
-            };
-          }
-          if (!ext.reason) {
-            const [bl] = await getPool().query(
-              `SELECT reason FROM vrc_blacklist WHERE vrchat_id = ? AND reason IS NOT NULL AND reason != '' LIMIT 1`, [vid]
-            );
-            if (bl.length > 0) ext.reason = bl[0].reason;
-          }
+          const cached = rosterMap.get(String(vid));
+          if (cached) ext = { ...cached, reason: reasonMap.get(String(vid)) || null };
+          else ext.reason = reasonMap.get(String(vid)) || null;
         }
         bans.push({
           ...(b || {}),

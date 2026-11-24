@@ -31,18 +31,39 @@ module.exports = function (getVRCCookieFn, GROUP_ID, getUserVRCCookieFn) {
       const inviterName = req.session.displayName || '管理员';
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       const results = [];
-      
-      for (const vrchatId of vrchatIds.slice(0, 100)) {
+
+      // DB-02：原来每条邀请要查 2 次库（是否已成员 / 是否已有待处理邀请）。
+      // 最多 100 条 → 最多 200 次往返。改为循环前一次性预取。
+      // 注意：本循环另有 sleep(200) 主动限速（避免 VRChat API 触发风控），总耗时由它主导，
+      // 这里优化的是数据库压力与连接占用。
+      const targets = vrchatIds.slice(0, 100);
+      const memberSet = new Set();
+      const pendingSet = new Set();
+      if (targets.length) {
+        const ph = targets.map(() => '?').join(',');
+        try {
+          const [rows] = await getPool().query(
+            `SELECT vrchat_id FROM group_roster WHERE vrchat_id IN (${ph}) AND is_member=1`, targets
+          );
+          for (const r of rows) memberSet.add(String(r.vrchat_id));
+        } catch (e) { /* 预取失败则退化为不跳过（后续 INSERT 仍有唯一性约束兜底） */ }
+        try {
+          const [rows] = await getPool().query(
+            `SELECT vrchat_id FROM group_invites WHERE vrchat_id IN (${ph}) AND status='pending'`, targets
+          );
+          for (const r of rows) pendingSet.add(String(r.vrchat_id));
+        } catch (e) { /* 同上 */ }
+      }
+
+      for (const vrchatId of targets) {
           await sleep(200);
         try {
-          const [existingMember] = await getPool().query(`SELECT id FROM group_roster WHERE vrchat_id=? AND is_member=1`, [vrchatId]);
-          if (existingMember.length > 0) {
+          if (memberSet.has(String(vrchatId))) {
             results.push({ vrchatId, status: 'already_member', message: '已是群成员' });
             continue;
           }
-          
-          const [existingInvite] = await getPool().query(`SELECT id FROM group_invites WHERE vrchat_id=? AND status='pending'`, [vrchatId]);
-          if (existingInvite.length > 0) {
+
+          if (pendingSet.has(String(vrchatId))) {
             results.push({ vrchatId, status: 'pending_invite', message: '已有待处理邀请' });
             continue;
           }

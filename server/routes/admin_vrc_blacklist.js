@@ -138,35 +138,52 @@ async function syncBlacklistWithVrcBans(pool, vrcCookie) {
     }
   }
 
-  for (const b of bans) {
+  // DB-02：原来循环内逐条查「是否已存在」+ 逐条查名册名（N 条封禁 = 最多 2N 次往返）。
+  // 改为循环前按批（每批 500）一次性预取，循环内只查内存 Map。
+  const validBans = bans.filter(b => b.userId && /^usr_/i.test(String(b.userId)));
+  const existMap = new Map();   // vrchat_id -> vrc_blacklist.id
+  const nameMap = new Map();    // vrchat_id -> group_roster.display_name
+  const PRELOAD_BATCH = 500;
+  const vidsAll = validBans.map(b => String(b.userId));
+  for (let i = 0; i < vidsAll.length; i += PRELOAD_BATCH) {
+    const slice = vidsAll.slice(i, i + PRELOAD_BATCH);
+    if (!slice.length) continue;
+    const ph = slice.map(() => '?').join(',');
+    try {
+      const [rows] = await pool.query(
+        `SELECT id, vrchat_id FROM vrc_blacklist WHERE vrchat_id IN (${ph})`, slice
+      );
+      for (const r of rows) existMap.set(String(r.vrchat_id), r.id);
+    } catch (e) { /* 预取失败则退化为逐条查询 */ }
+    try {
+      const [rows] = await pool.query(
+        `SELECT vrchat_id, display_name FROM group_roster WHERE vrchat_id IN (${ph})`, slice
+      );
+      for (const r of rows) {
+        if (r.display_name) nameMap.set(String(r.vrchat_id), r.display_name);
+      }
+    } catch (e) { /* 名册查询失败不阻塞 */ }
+  }
+
+  for (const b of validBans) {
     const vid = b.userId;
-    if (!vid || !/^usr_/i.test(vid)) continue;
     const url = String(b.userUrl || '');
     const name = String(b.displayName || '').trim().slice(0, 255) || '';
     try {
-      const [existing] = await pool.query(
-        `SELECT id FROM vrc_blacklist WHERE vrchat_id = ?`, [vid]
-      );
-      if (existing.length > 0) {
+      const existId = existMap.get(String(vid));
+      if (existId !== undefined) {
         // 已存在：仅刷新封禁状态与同步时间；不覆盖手动维护的 reason/source
         await pool.query(
           `UPDATE vrc_blacklist SET banned=1, synced_at=?
            WHERE id=?`,
-          [now, existing[0].id]
+          [now, existId]
         );
         result.updated++;
       } else {
         // VRChat bans API 不带 displayName——从本地名册取真名（无则回退占位名），
         // 避免黑名单里存 "群成员 usr_xxx" 这种不可读的名字
         let realName = name;
-        if (!realName) {
-          try {
-            const [roster] = await pool.query(
-              `SELECT display_name FROM group_roster WHERE vrchat_id = ? LIMIT 1`, [vid]
-            );
-            if (roster.length > 0 && roster[0].display_name) realName = roster[0].display_name;
-          } catch (e4) { /* 名册查询失败不阻塞 */ }
-        }
+        if (!realName) realName = nameMap.get(String(vid)) || '';
         await pool.query(
           `INSERT INTO vrc_blacklist (vrchat_id, username, url, reason, source, banned, synced_at, created_by)
            VALUES (?, ?, ?, NULL, 'group', 1, ?, 0)`,

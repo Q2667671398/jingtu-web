@@ -23,12 +23,19 @@ async function checkAndUnlock(userId, type, data) {
     
     let unlockedCount = 0;
     const unlockedAchievements = [];
-    
+
+    // DB-01: 原本每个成就都单独查一次 user_achievements（29 个成就 = 29 次往返）。
+    // 改为循环前一次性拉全该用户的记录建 Map。写逻辑保持不变：
+    // 关键的条件 UPDATE（AND is_unlocked = 0）仍是原子翻转，并发幂等语义不受影响；
+    // Map 只是快照，若并发下判断过期，INSERT 会撞唯一键并走已有的 1062 重试分支。
+    const [myRows] = await pool.query(
+      'SELECT id, achievement_id, is_unlocked, progress FROM user_achievements WHERE user_id = ?',
+      [userId]
+    );
+    const myMap = new Map(myRows.map(r => [r.achievement_id, r]));
+
     for (const achievement of achievements) {
-      const [userAchievement] = await pool.query(
-        'SELECT * FROM user_achievements WHERE user_id = ? AND achievement_id = ?',
-        [userId, achievement.id]
-      );
+      const userAchievement = myMap.has(achievement.id) ? [myMap.get(achievement.id)] : [];
       
       let progress = data.value !== undefined ? data.value : data;
       if (achievement.condition_type === ACHIEVEMENT_CONDITION_STREAK) {
@@ -61,11 +68,9 @@ async function checkAndUnlock(userId, type, data) {
           unlockedAchievements.push(achievement);
           continue;
         }
-        // 0 行：行不存在，或已处于解锁态
-        const [existing] = await pool.query(
-          'SELECT id, is_unlocked, progress FROM user_achievements WHERE user_id = ? AND achievement_id = ?',
-          [userId, achievement.id]
-        );
+        // 0 行：行不存在，或已处于解锁态（用循环前的 Map 快照判断，省一次查询）
+        const cached = myMap.get(achievement.id);
+        const existing = cached ? [cached] : [];
         if (existing.length === 0) {
           try {
             await pool.query(
@@ -347,4 +352,6 @@ router.get('/types', requireAuth, async (req, res) => {
 });
 
 module.exports = router;
+// 供单元测试直接调用（内部实现，非 HTTP 面；挂在 router 上不影响路由行为）
+module.exports.__checkAndUnlock = checkAndUnlock;
 router.checkAndUnlock = checkAndUnlock;

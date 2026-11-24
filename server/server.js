@@ -676,38 +676,45 @@ app.use('/api', vrcSystemRouter);
 
 // 健康检查（返回系统 VRChat 登录状态）
 app.get('/api/health', async (req, res) => {
-  // 会话保活：如果有用户则触 refreshing session
-  if (req.session?.userId) {
-    req.session.touch();
+  try {
+    // 会话保活：如果有用户则触 refreshing session
+    if (req.session?.userId) {
+      req.session.touch();
+    }
+    // S-04：健康检查曾对匿名暴露系统 VRChat 账号/自动重登凭据状态/pipeline 内部指标。
+    // 匿名与普通成员一律只拿到存活探针；完整诊断信息仅管理面板（admin/super_admin）可见。
+    if (!req.session?.userId) return res.json({ status: 'ok' });
+    const role = await currentRole(req);
+    if (role !== 'admin' && role !== 'super_admin') return res.json({ status: 'ok' });
+    const vrcCookieExpireDays = getVRCCookieExpireDays();
+    const vrcCookieSoftExpired = !!(vrcCookieExpireDays > 0 && authState.cookieSetAt && Date.now() - authState.cookieSetAt > vrcCookieExpireDays * 86400000);
+    const pipelineHealth = typeof global.__getVrcPipelineStatus === 'function' ? global.__getVrcPipelineStatus() : null;
+    // 头像加固：登录态存在但会话实际不可用（cookie 软性过期 / pipeline 服务端拒绝）→ 管理面板醒目告警
+    const systemVrcStale = !!(authState.loggedIn && (vrcCookieSoftExpired || (pipelineHealth && pipelineHealth.sessionRejected)));
+    res.json({
+      status: 'ok',
+      systemVrcLogin: authState.loggedIn,
+      systemVrcStale,
+      systemVrcUser: authState.loggedIn ? { id: authState.userId, displayName: authState.displayName } : null,
+      // V8.2: 系统 VRChat cookie 软性过期配置与剩余有效期（供管理面板展示）
+      vrcCookieExpireDays: vrcCookieExpireDays,
+      vrcCookieSetAt: authState.cookieSetAt || null,
+      vrcCookieExpiresAt: (vrcCookieExpireDays && authState.cookieSetAt)
+        ? new Date(authState.cookieSetAt + vrcCookieExpireDays * 86400000).toISOString()
+        : null,
+      // F-28: Pipeline 实时连接状态 + 最近一次服务端拒绝原因（诊断 1006 重连循环）
+      pipeline: pipelineHealth,
+      // F-29: 自动重登凭据是否已配置（前端据此渲染「保存/清除凭据」按钮状态）
+      vrcAutoReloginConfigured: hasVRCCredentials(),
+      // F-30: 自动重登熔断/退避状态（前端据此展示防封禁退避横幅）
+      vrcAutoRelogin: getAutoReloginStatus()
+    });
+  } catch (e) {
+    // BE-01：健康检查本身绝不能因内部查询失败而挂起请求（Express 4 不自动捕获 async 异常）。
+    // 失败时仍回 200 + 最小存活体，避免探针/监控误判为宕机。
+    logger.warn('health', '健康检查异常，降级为最小响应:', e && e.message);
+    if (!res.headersSent) res.json({ status: 'ok', degraded: true });
   }
-  // S-04：健康检查曾对匿名暴露系统 VRChat 账号/自动重登凭据状态/pipeline 内部指标。
-  // 匿名与普通成员一律只拿到存活探针；完整诊断信息仅管理面板（admin/super_admin）可见。
-  if (!req.session?.userId) return res.json({ status: 'ok' });
-  const role = await currentRole(req);
-  if (role !== 'admin' && role !== 'super_admin') return res.json({ status: 'ok' });
-  const vrcCookieExpireDays = getVRCCookieExpireDays();
-  const vrcCookieSoftExpired = !!(vrcCookieExpireDays > 0 && authState.cookieSetAt && Date.now() - authState.cookieSetAt > vrcCookieExpireDays * 86400000);
-  const pipelineHealth = typeof global.__getVrcPipelineStatus === 'function' ? global.__getVrcPipelineStatus() : null;
-  // 头像加固：登录态存在但会话实际不可用（cookie 软性过期 / pipeline 服务端拒绝）→ 管理面板醒目告警
-  const systemVrcStale = !!(authState.loggedIn && (vrcCookieSoftExpired || (pipelineHealth && pipelineHealth.sessionRejected)));
-  res.json({
-    status: 'ok',
-    systemVrcLogin: authState.loggedIn,
-    systemVrcStale,
-    systemVrcUser: authState.loggedIn ? { id: authState.userId, displayName: authState.displayName } : null,
-    // V8.2: 系统 VRChat cookie 软性过期配置与剩余有效期（供管理面板展示）
-    vrcCookieExpireDays: vrcCookieExpireDays,
-    vrcCookieSetAt: authState.cookieSetAt || null,
-    vrcCookieExpiresAt: (vrcCookieExpireDays && authState.cookieSetAt)
-      ? new Date(authState.cookieSetAt + vrcCookieExpireDays * 86400000).toISOString()
-      : null,
-    // F-28: Pipeline 实时连接状态 + 最近一次服务端拒绝原因（诊断 1006 重连循环）
-    pipeline: pipelineHealth,
-    // F-29: 自动重登凭据是否已配置（前端据此渲染「保存/清除凭据」按钮状态）
-    vrcAutoReloginConfigured: hasVRCCredentials(),
-    // F-30: 自动重登熔断/退避状态（前端据此展示防封禁退避横幅）
-    vrcAutoRelogin: getAutoReloginStatus()
-  });
 });
 
 // ==================== 客户端配置 / 统计 / 搜索路由 ====================
