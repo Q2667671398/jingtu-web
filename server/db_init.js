@@ -1142,6 +1142,23 @@ async function initDatabase() {
         INDEX idx_file(file_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
+      // ==================== 群组文件临时分享链接 ====================
+      // 用于把文件分享给未登录用户（如群外朋友）：凭 token 公开下载，可设有效期与次数上限，可撤销。
+      `CREATE TABLE IF NOT EXISTS file_share_links (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        token VARCHAR(64) NOT NULL COMMENT '分享令牌（随机 32 字节 hex）',
+        file_id INT NOT NULL COMMENT '文件 group_files.id',
+        created_by INT NULL COMMENT '创建者 users.id',
+        expires_at DATETIME NOT NULL COMMENT '过期时间',
+        max_downloads INT DEFAULT 0 COMMENT '最大下载次数（0=不限）',
+        download_count INT DEFAULT 0 COMMENT '已下载次数',
+        is_revoked TINYINT DEFAULT 0 COMMENT '是否已撤销',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_token(token),
+        INDEX idx_file(file_id),
+        INDEX idx_expires(expires_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
       // ==================== 群组文件分片上传（断点续传） ====================
       // 大文件（安装包可达 2GB）分片上传：init 建会话 → 逐片上传 → complete 合并。
       // 同一 (uploader_id, file_hash) 的未完成会话可复用，实现断点续传。

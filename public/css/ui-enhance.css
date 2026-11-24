@@ -1810,3 +1810,12 @@ body.home-active .tab-indicator { opacity: 0 !important; }
   flex: 0 0 34px; text-align: center;
   font-size: 15px; font-weight: 800; color: var(--accent, #7c5cfc);
 }
+
+/* 分享链接行 */
+.files-share-row {
+  display: flex; gap: 10px; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--border, #e5e7eb);
+}
+.files-share-row:last-child { border-bottom: none; }
+.files-share-row.dead { opacity: .55; }
+.files-share-main { flex: 1; min-width: 0; }

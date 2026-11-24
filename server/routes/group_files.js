@@ -1041,6 +1041,177 @@ module.exports = function () {
     } catch (e) { handleError(res, e, '[files:download]'); }
   });
 
+  // ==================== 临时分享链接（token） ====================
+  // 用途：把文件分享给未登录用户（群外朋友）。凭 token 公开下载，可设有效期/次数上限/撤销。
+  const SHARE_MAX_EXPIRE_DAYS = 30;
+
+  // 生成分享链接（管理员）
+  router.post('/:id/share', requireAdminCompat, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!id) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT id, title FROM group_files WHERE id = ? AND is_deleted = 0`, [id]
+      );
+      if (!rows.length) return sendError(res, 404, ErrorCodes.NOT_FOUND, '文件不存在');
+
+      const b = req.body || {};
+      const hours = parseInt(b.expiresInHours, 10);
+      const validHours = Number.isFinite(hours) && hours > 0
+        ? Math.min(hours, SHARE_MAX_EXPIRE_DAYS * 24) : 24;
+      const maxDownloads = parseInt(b.maxDownloads, 10);
+      const validMax = Number.isFinite(maxDownloads) && maxDownloads > 0
+        ? Math.min(maxDownloads, 100000) : 0;
+
+      const token = crypto.randomBytes(32).toString('hex');
+      const [r] = await pool.query(
+        `INSERT INTO file_share_links (token, file_id, created_by, expires_at, max_downloads)
+         VALUES (?,?,?, DATE_ADD(NOW(), INTERVAL ? HOUR), ?)`,
+        [token, id, req.session.userId || null, validHours, validMax]
+      );
+      try { await logOper(req.session.userId, '创建文件分享链接', `#${id} ${validHours}h`); } catch (e) { /* ignore */ }
+      const [[row]] = await pool.query(
+        `SELECT expires_at FROM file_share_links WHERE id = ?`, [r.insertId]
+      );
+      ok(res, {
+        id: r.insertId,
+        token,
+        url: `/api/group-files/share/${token}`,
+        expiresAt: row && row.expires_at,
+        expiresInHours: validHours,
+        maxDownloads: validMax
+      });
+    } catch (e) { handleError(res, e, '[files/share:create]'); }
+  });
+
+  // 列出某文件的分享链接（管理员）
+  router.get('/:id/shares', requireAdminCompat, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!id) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
+      const [rows] = await getPool().query(
+        `SELECT s.id, s.token, s.expires_at, s.max_downloads, s.download_count, s.is_revoked, s.created_at,
+                u.display_name AS creator_name
+         FROM file_share_links s
+         LEFT JOIN users u ON u.id = s.created_by
+         WHERE s.file_id = ?
+         ORDER BY s.created_at DESC, s.id DESC
+         LIMIT 50`,
+        [id]
+      );
+      const now = Date.now();
+      res.json({
+        links: rows.map(r => ({
+          id: r.id,
+          token: r.token,
+          url: `/api/group-files/share/${r.token}`,
+          expiresAt: r.expires_at,
+          expired: r.expires_at ? new Date(r.expires_at).getTime() < now : false,
+          maxDownloads: Number(r.max_downloads) || 0,
+          downloadCount: Number(r.download_count) || 0,
+          isRevoked: !!r.is_revoked,
+          creatorName: r.creator_name || '',
+          createdAt: r.created_at
+        }))
+      });
+    } catch (e) { handleError(res, e, '[files/share:list]'); }
+  });
+
+  // 撤销分享链接（管理员）
+  router.delete('/share/:linkId', requireAdminCompat, async (req, res) => {
+    try {
+      const lid = parseInt(req.params.linkId, 10);
+      if (!lid) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
+      const [r] = await getPool().query(
+        `UPDATE file_share_links SET is_revoked = 1 WHERE id = ?`, [lid]
+      );
+      if (!r.affectedRows) return sendError(res, 404, ErrorCodes.NOT_FOUND, '链接不存在');
+      try { await logOper(req.session.userId, '撤销文件分享链接', `#${lid}`); } catch (e) { /* ignore */ }
+      ok(res, { message: '已撤销' });
+    } catch (e) { handleError(res, e, '[files/share:revoke]'); }
+  });
+
+  // 凭 token 公开下载（**无需登录**）
+  // 注意：必须在 `/:id/...` 类路由之前不冲突（/share/:token 段数与 /:id/download 不同，安全）
+  router.get('/share/:token', async (req, res) => {
+    try {
+      const token = String(req.params.token || '').trim();
+      if (!/^[a-f0-9]{64}$/.test(token)) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '分享链接无效');
+      }
+      const pool = getPool();
+      const [rows] = await pool.query(
+        `SELECT s.id, s.file_id, s.expires_at, s.max_downloads, s.download_count, s.is_revoked,
+                f.original_name, f.stored_name, f.file_size, f.mime_type, f.is_deleted
+         FROM file_share_links s
+         JOIN group_files f ON f.id = s.file_id
+         WHERE s.token = ?`,
+        [token]
+      );
+      if (!rows.length) return sendError(res, 404, ErrorCodes.NOT_FOUND, '分享链接不存在');
+      const s = rows[0];
+      if (s.is_revoked) return sendError(res, 403, ErrorCodes.FORBIDDEN, '该分享链接已被撤销');
+      if (s.expires_at && new Date(s.expires_at).getTime() < Date.now()) {
+        return sendError(res, 403, ErrorCodes.FORBIDDEN, '该分享链接已过期');
+      }
+      if (s.max_downloads > 0 && s.download_count >= s.max_downloads) {
+        return sendError(res, 403, ErrorCodes.FORBIDDEN, '该分享链接下载次数已达上限');
+      }
+      if (s.is_deleted) return sendError(res, 404, ErrorCodes.NOT_FOUND, '文件已删除');
+
+      // 路径安全校验
+      const rawStored = String(s.stored_name || '');
+      if (rawStored.includes('/') || rawStored.includes('\\') || rawStored.includes('..')) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '文件记录异常');
+      }
+      const safeName = path.basename(rawStored);
+      if (!/^[A-Za-z0-9_.-]+$/.test(safeName)) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '文件记录异常');
+      }
+      const abs = path.join(FILES_DIR, safeName);
+      if (!abs.startsWith(FILES_DIR + path.sep)) {
+        return sendError(res, 400, ErrorCodes.BAD_REQUEST, '非法路径');
+      }
+      if (!fs.existsSync(abs)) {
+        return sendError(res, 404, ErrorCodes.NOT_FOUND, '文件已不在服务器上');
+      }
+
+      // 计数（链接次数 + 文件总下载次数）
+      pool.query(`UPDATE file_share_links SET download_count = download_count + 1 WHERE id = ?`, [s.id]).catch(() => {});
+      pool.query(`UPDATE group_files SET download_count = download_count + 1 WHERE id = ?`, [s.file_id]).catch(() => {});
+
+      const stat = fs.statSync(abs);
+      const total = stat.size;
+      const origName = String(s.original_name || safeName);
+      const asciiFallback = origName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_') || safeName;
+      res.setHeader('Content-Type', s.mime_type || 'application/octet-stream');
+      res.setHeader('Content-Disposition',
+        `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(origName)}`);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Accept-Ranges', 'bytes');
+
+      const range = req.headers.range;
+      if (range && /^bytes=\d*-\d*$/.test(range)) {
+        const [startStr, endStr] = range.replace('bytes=', '').split('-');
+        let start = startStr ? parseInt(startStr, 10) : 0;
+        let end = endStr ? parseInt(endStr, 10) : total - 1;
+        if (Number.isNaN(start) || start < 0) start = 0;
+        if (Number.isNaN(end) || end >= total) end = total - 1;
+        if (start > end) {
+          res.setHeader('Content-Range', `bytes */${total}`);
+          return res.status(416).end();
+        }
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+        res.setHeader('Content-Length', String(end - start + 1));
+        return fs.createReadStream(abs, { start, end }).pipe(res);
+      }
+      res.setHeader('Content-Length', String(total));
+      fs.createReadStream(abs).pipe(res);
+    } catch (e) { handleError(res, e, '[files/share:download]'); }
+  });
+
   // ==================== 删除（管理员，软删除 + 物理删除） ====================
 
   router.delete('/:id', requireAdminCompat, async (req, res) => {

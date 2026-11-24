@@ -105,6 +105,7 @@
               <button type="button" class="btn btn-sm btn-accent" data-file-download="${f.id}">⬇ ${esc(__('files.download'))}</button>
               ${histBtn}
               ${canDel ? `<button type="button" class="btn btn-sm btn-outline" data-file-edit="${f.id}">✏️ ${esc(__('common.edit') || '编辑')}</button>` : ''}
+              ${canDel ? `<button type="button" class="btn btn-sm btn-outline" data-file-share="${f.id}">🔗 ${esc(__('files.share') || '分享')}</button>` : ''}
               ${canDel ? `<button type="button" class="btn btn-sm btn-outline" data-file-delete="${f.id}">${esc(__('common.delete'))}</button>` : ''}
             </div>
           </div>`;
@@ -816,6 +817,142 @@
     }
   }
 
+  // ---------- 临时分享链接 ----------
+  function ensureShareModal() {
+    if (document.getElementById('filesShareModal')) return;
+    const el = document.createElement('div');
+    el.className = 'modal';
+    el.id = 'filesShareModal';
+    el.style.display = 'none';
+    el.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title">🔗 ${esc(__('files.share') || '分享')}</h3>
+          <button type="button" class="modal-close" data-modal-close="filesShareModal" aria-label="close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="text-13 text-muted2">${esc(__('files.share_hint') || '生成临时链接，未登录用户也可凭链接下载。可设置有效期与下载次数上限。')}</p>
+          <div class="flex-row gap-8 align-center mb-8" style="flex-wrap:wrap">
+            <label class="text-13">${esc(__('files.share_expire') || '有效期')}</label>
+            <select id="filesShareExpire" class="form-input" style="max-width:150px">
+              <option value="1">1 ${esc(__('files.hour') || '小时')}</option>
+              <option value="24" selected>1 ${esc(__('files.day') || '天')}</option>
+              <option value="168">7 ${esc(__('files.day') || '天')}</option>
+              <option value="720">30 ${esc(__('files.day') || '天')}</option>
+            </select>
+            <label class="text-13">${esc(__('files.share_max') || '次数上限')}</label>
+            <input type="number" id="filesShareMax" class="form-input" style="max-width:110px" min="0" max="100000" value="0" placeholder="0=不限">
+            <button type="button" class="btn btn-sm btn-accent" id="filesShareCreate">${esc(__('files.share_create') || '生成链接')}</button>
+          </div>
+          <div id="filesShareList"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', (e) => {
+      if (e.target && e.target.hasAttribute('data-modal-close')) closeModal('filesShareModal');
+    });
+    document.getElementById('filesShareCreate').addEventListener('click', createShareLink);
+    // 复制链接
+    el.addEventListener('click', (e) => {
+      const cp = e.target && e.target.closest ? e.target.closest('[data-share-copy]') : null;
+      if (cp) {
+        const url = location.origin + cp.dataset.shareCopy;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(
+            () => toast(__('files.copied') || '已复制', 'success'),
+            () => toast(url, 'info')
+          );
+        } else {
+          toast(url, 'info');
+        }
+        return;
+      }
+      const rv = e.target && e.target.closest ? e.target.closest('[data-share-revoke]') : null;
+      if (rv) { revokeShareLink(rv.dataset.shareRevoke); }
+    });
+  }
+
+  let _shareFileId = null;
+
+  async function openShare(fileId) {
+    ensureShareModal();
+    _shareFileId = fileId;
+    const box = document.getElementById('filesShareList');
+    if (box) box.innerHTML = `<p class="text-muted2 text-13">${esc(__('common.loading'))}</p>`;
+    showModal('filesShareModal');
+    await loadShareList();
+  }
+
+  async function loadShareList() {
+    const box = document.getElementById('filesShareList');
+    if (!box || !_shareFileId) return;
+    try {
+      const res = await api('/api/group-files/' + encodeURIComponent(_shareFileId) + '/shares', { method: 'GET' });
+      if (!res.ok) { box.innerHTML = `<p class="text-13">${esc(__('files.load_failed'))}</p>`; return; }
+      const d = await res.json().catch(() => ({}));
+      const links = d.links || [];
+      if (!links.length) {
+        box.innerHTML = `<p class="text-muted2 text-13">${esc(__('files.share_empty') || '还没有生成分享链接')}</p>`;
+        return;
+      }
+      box.innerHTML = links.map(l => {
+        const dead = l.isRevoked || l.expired || (l.maxDownloads > 0 && l.downloadCount >= l.maxDownloads);
+        const status = l.isRevoked ? (__('files.share_revoked') || '已撤销')
+          : l.expired ? (__('files.share_expired') || '已过期')
+          : (l.maxDownloads > 0 && l.downloadCount >= l.maxDownloads) ? (__('files.share_exhausted') || '次数用尽')
+          : (__('files.share_active') || '有效');
+        return `
+          <div class="files-share-row${dead ? ' dead' : ''}">
+            <div class="files-share-main">
+              <div class="text-12" style="word-break:break-all">${esc(l.url)}</div>
+              <div class="text-12 text-muted2">
+                ${esc(status)} · ${esc(__('files.share_used') || '已下载')} ${l.downloadCount}${l.maxDownloads > 0 ? '/' + l.maxDownloads : ''}
+                · ${esc(__('files.share_expire_at') || '到期')} ${esc(fmtDateTime(l.expiresAt))}
+                ${l.creatorName ? ' · ' + esc(l.creatorName) : ''}
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" data-share-copy="${escAttr(l.url)}">📋</button>
+            ${!l.isRevoked ? `<button type="button" class="btn btn-sm btn-outline" data-share-revoke="${l.id}">${esc(__('files.share_revoke') || '撤销')}</button>` : ''}
+          </div>`;
+      }).join('');
+    } catch (e) {
+      box.innerHTML = `<p class="text-13">${esc(e.message)}</p>`;
+    }
+  }
+
+  async function createShareLink() {
+    if (!_shareFileId) return;
+    const expireEl = document.getElementById('filesShareExpire');
+    const maxEl = document.getElementById('filesShareMax');
+    const expiresInHours = parseInt(expireEl ? expireEl.value : '24', 10) || 24;
+    const maxDownloads = parseInt(maxEl ? maxEl.value : '0', 10) || 0;
+    try {
+      const res = await api('/api/group-files/' + encodeURIComponent(_shareFileId) + '/share', {
+        method: 'POST', body: { expiresInHours, maxDownloads }
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { toast(errText(d) || __('files.share_failed') || '生成失败', 'error'); return; }
+      const url = location.origin + d.url;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).catch(() => {});
+      }
+      toast((__('files.share_created') || '已生成并复制链接') + '：' + url, 'success');
+      await loadShareList();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
+  async function revokeShareLink(linkId) {
+    const okDel = await new Promise(r => showConfirm(
+      __('files.share_revoke_confirm') || '撤销后该链接立即失效，确定吗？', () => r(true), () => r(false)));
+    if (!okDel) return;
+    try {
+      const res = await api('/api/group-files/share/' + encodeURIComponent(linkId), { method: 'DELETE' });
+      if (!res.ok) { toast(__('files.share_revoke_failed') || '撤销失败', 'error'); return; }
+      toast(__('files.share_revoked_done') || '已撤销', 'success');
+      await loadShareList();
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
   // ---------- 版本历史弹窗 ----------
   function ensureVersionsModal() {
     if (document.getElementById('fileVersionsModal')) return;
@@ -964,6 +1101,8 @@
       if (edit) { openEdit(edit.dataset.fileEdit); return; }
       const fav = t.closest('[data-file-fav]');
       if (fav) { toggleFavorite(fav.dataset.fileFav); return; }
+      const share = t.closest('[data-file-share]');
+      if (share) { openShare(share.dataset.fileShare); return; }
       const catDel = t.closest('[data-cat-del]');
       if (catDel) { deleteCategory(catDel.dataset.catDel); return; }
     });
