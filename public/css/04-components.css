@@ -37,11 +37,6 @@
   transform:translateY(-1px);
   box-shadow:0 4px 18px rgba(124,92,252,.4)
 }
-.btn-danger {
-  background:transparent;
-  border:1px solid var(--red);
-  color:var(--red)
-}
 .btn-danger:hover {
   background:var(--red);
   color:#fff;
