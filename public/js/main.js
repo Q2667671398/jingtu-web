@@ -783,8 +783,14 @@ async function signEvent(eventId) {
     try {
       const res = await api(`/api/events/${eventId}/sign`, { method: 'POST' });
       if (res.ok) {
-        toast(__('events.sign_success'), 'success');
-        signedEvents.add(eventId);
+        const data = await res.json().catch(() => ({}));
+        // 满员时会自动进入候补队列，明确告知位置而不是笼统说"报名成功"
+        if (data && data.waitlisted) {
+          toast((__('events.waitlist_joined') || '活动已满员，你已进入候补队列（第 {n} 位）').replace('{n}', data.position || 1), 'info');
+        } else {
+          toast(__('events.sign_success'), 'success');
+          signedEvents.add(eventId);
+        }
         if (typeof showEventDetail === 'function') showEventDetail(eventId);
       }
     } catch (err) { if (isApiHandledError(err)) return; toast(__('main.signup_failed') + ': ' + err.message, 'error'); }
@@ -798,8 +804,13 @@ async function unsignEvent(eventId) {
     try {
       const res = await api(`/api/events/${eventId}/unsign`, { method: 'POST' });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
         toast(__('main.signup_cancelled'), 'info');
         signedEvents.delete(eventId);
+        // 取消成功后可能触发了候补递补，提示一下组织者可见的变化
+        if (data && data.promoted && data.promoted.name) {
+          toast((__('events.waitlist_promoted') || '{name} 已从候补转为正式报名').replace('{name}', data.promoted.name), 'success');
+        }
         if (typeof showEventDetail === 'function') showEventDetail(eventId);
       }
     } catch (err) { if (isApiHandledError(err)) return; toast(__('main.op_failed') + ': ' + err.message, 'error'); }

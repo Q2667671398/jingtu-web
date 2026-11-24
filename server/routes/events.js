@@ -203,7 +203,7 @@ router.get('/', async (req, res) => {
       const [count] = await getPool().query(`SELECT COUNT(*) as total FROM event WHERE ${whereStr}`, params);
       const total = count[0].total;
       
-      const sql = `SELECT e.id, e.title, e.place, e.event_time AS eventTime, e.description, e.max_sign AS maxSign, e.event_type AS eventType, e.vrchat_event_id AS vrchatEventId, e.ends_at AS endsAt, e.create_admin AS createAdmin, e.create_user_id AS createUserId, e.is_archive AS isArchive, e.visibility, e.source, e.world_id AS worldId, e.world_name AS worldName, e.world_image_url AS worldImageUrl, e.instance_id AS instanceId, e.instance_type AS instanceType, e.create_time AS createTime, e.updated_at AS updatedAt, COALESCE(s.signCount,0) AS signedCount, (SELECT 1 FROM event_sign esx WHERE esx.event_id = e.id AND esx.user_vrcid = ? AND esx.is_sign=1) AS signedByMe FROM event e LEFT JOIN (SELECT event_id, COUNT(*) AS signCount FROM event_sign WHERE is_sign=1 GROUP BY event_id) s ON s.event_id = e.id WHERE ${whereStr} ORDER BY e.event_time DESC LIMIT ? OFFSET ?`;
+      const sql = `SELECT e.id, e.title, e.place, e.event_time AS eventTime, e.description, e.max_sign AS maxSign, e.event_type AS eventType, e.vrchat_event_id AS vrchatEventId, e.ends_at AS endsAt, e.sign_start_at AS signStartAt, e.create_admin AS createAdmin, e.create_user_id AS createUserId, e.is_archive AS isArchive, e.visibility, e.source, e.world_id AS worldId, e.world_name AS worldName, e.world_image_url AS worldImageUrl, e.instance_id AS instanceId, e.instance_type AS instanceType, e.create_time AS createTime, e.updated_at AS updatedAt, COALESCE(s.signCount,0) AS signedCount, (SELECT 1 FROM event_sign esx WHERE esx.event_id = e.id AND esx.user_vrcid = ? AND esx.is_sign=1) AS signedByMe FROM event e LEFT JOIN (SELECT event_id, COUNT(*) AS signCount FROM event_sign WHERE is_sign=1 GROUP BY event_id) s ON s.event_id = e.id WHERE ${whereStr} ORDER BY e.event_time DESC LIMIT ? OFFSET ?`;
       // 注意占位符顺序：SELECT 子查询的 ?(signedByMe) 在 WHERE 之前，故 uid 必须排在 params 之前
       const queryParams = [uid, ...params, pageSize, offset];
       
@@ -324,10 +324,40 @@ router.get('/', async (req, res) => {
         const [checkins] = await getPool().query(`SELECT id, user_id, user_name, checkin_time AS checkinTime FROM event_checkin WHERE event_id=? ORDER BY checkin_time`, [id]);
         checkinList = checkins;
       }
+      // 候补队列：我的候补位置 + 候补总数（满员才可能非 0）
+      let waitlistedByMe = false;
+      let myWaitlistPosition = null;
+      let waitlistCount = 0;
+      if (uid) {
+        const [[wRow]] = await getPool().query(
+          `SELECT create_time FROM event_sign WHERE event_id=? AND user_vrcid=? AND is_waitlist=1`, [id, uid]
+        );
+        if (wRow) {
+          waitlistedByMe = true;
+          const [[wCnt]] = await getPool().query(
+            `SELECT COUNT(*) AS c FROM event_sign WHERE event_id=? AND is_waitlist=1 AND create_time <= ?`,
+            [id, wRow.create_time]
+          );
+          myWaitlistPosition = Number(wCnt && wCnt.c) || 1;
+        }
+      }
+      const [[wlTotal]] = await getPool().query(
+        `SELECT COUNT(*) AS c FROM event_sign WHERE event_id=? AND is_waitlist=1`, [id]
+      );
+      waitlistCount = Number(wlTotal && wlTotal.c) || 0;
+
       // 结束状态：用于前端置灰/隐藏过期活动的操作入口
       const now = appNow();
       const ended = evt.endsAt ? now > new Date(evt.endsAt) : (evt.eventTime ? now > new Date(evt.eventTime) : false);
-      res.json({ ...evt, time: evt.eventTime, desc: evt.description, signedByMe, signCount: signCount[0].c, maxSign: evt.maxSign, signList, checkinList, checkinCount, ended });
+      // 开抢提醒：报名是否已开放 + 开放时间（前端据此显示倒计时）
+      const signStartMs = evt.signStartAt ? new Date(evt.signStartAt).getTime() : null;
+      const signOpen = !signStartMs || !Number.isFinite(signStartMs) || Date.now() >= signStartMs;
+      res.json({
+        ...evt, time: evt.eventTime, desc: evt.description, signedByMe, signCount: signCount[0].c,
+        maxSign: evt.maxSign, signList, checkinList, checkinCount, ended,
+        waitlistedByMe, myWaitlistPosition, waitlistCount,
+        signOpen, signStartAt: evt.signStartAt || null
+      });
     } catch (e) { handleError(res, e, '[events/detail]'); }
   });
 
@@ -335,7 +365,7 @@ router.get('/', async (req, res) => {
   // 细粒度权限：管理员可在后台显式禁用「创建活动」（未配置/允许时放行，超管不受限）
   router.post('/', requireAuth, requirePerm('can_create_event'), async (req, res) => {
     try {
-      let { title, place, eventTime, time, description, desc, maxSign, eventType, endsAt, visibility, worldId, worldName, worldImageUrl, instanceId, instanceType } = req.body;
+      let { title, place, eventTime, time, description, desc, maxSign, eventType, endsAt, visibility, worldId, worldName, worldImageUrl, instanceId, instanceType, signStartAt } = req.body;
         if (!eventTime && time) eventTime = time;
         if (!description && desc) description = desc;
         if (!title || !eventTime) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '标题和时间不能为空');
@@ -347,9 +377,15 @@ router.get('/', async (req, res) => {
         if (maxSign !== undefined && (isNaN(maxSign) || maxSign < 0 || maxSign > 9999)) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '人数限制必须是0-9999之间的数字');
         if (description && description.length > 2000) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '描述不能超过2000个字符');
         if (endsAt && eventTime && new Date(endsAt) <= new Date(eventTime)) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '结束时间必须晚于开始时间');
+        // 开抢时间：可选；若给出，必须在活动开始之前
+        if (signStartAt) {
+          const sm = new Date(signStartAt).getTime();
+          if (!Number.isFinite(sm)) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '报名开放时间格式不正确');
+          if (eventTime && sm > new Date(eventTime).getTime()) return sendError(res, 400, ErrorCodes.BAD_REQUEST, '报名开放时间必须早于活动开始时间');
+        }
         const [result] = await getPool().query(
-          `INSERT INTO event (title, place, event_time, description, max_sign, event_type, ends_at, visibility, world_id, world_name, world_image_url, instance_id, instance_type, source, create_admin, create_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [title, place || '', eventTime, description || '', maxSign || 0, eventType || 'activity', endsAt || null, visibility || 'members_only', worldId || null, worldName || null, worldImageUrl || null, instanceId || null, instanceType || null, 'manual', req.session.displayName || req.session.userId || '未知用户', req.session.userId]
+          `INSERT INTO event (title, place, event_time, description, max_sign, event_type, ends_at, visibility, world_id, world_name, world_image_url, instance_id, instance_type, source, create_admin, create_user_id, sign_start_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [title, place || '', eventTime, description || '', maxSign || 0, eventType || 'activity', endsAt || null, visibility || 'members_only', worldId || null, worldName || null, worldImageUrl || null, instanceId || null, instanceType || null, 'manual', req.session.displayName || req.session.userId || '未知用户', req.session.userId, signStartAt || null]
       );
       await logOper(req.session.userId, '创建活动', `活动: ${title}`);
       const evtType = eventType === 'birthday' ? '🎂 生日派对' : '📅 活动';
@@ -605,17 +641,48 @@ router.get('/', async (req, res) => {
     try {
       conn = await getPool().getConnection();
       await conn.beginTransaction();
-      const [evt] = await conn.query(`SELECT max_sign AS maxSign, title, create_user_id AS createUserId, create_admin AS createAdmin, event_time AS eventTime, ends_at AS endsAt FROM event WHERE id=? FOR UPDATE`, [req.params.id]);
+      const [evt] = await conn.query(`SELECT max_sign AS maxSign, title, create_user_id AS createUserId, create_admin AS createAdmin, event_time AS eventTime, ends_at AS endsAt, sign_start_at AS signStartAt FROM event WHERE id=? FOR UPDATE`, [req.params.id]);
       if (evt.length === 0) { await conn.rollback(); return sendError(res, 404, ErrorCodes.NOT_FOUND, '活动不存在'); }
       if (eventHasEnded(evt[0])) { await conn.rollback(); return sendError(res, 403, ErrorCodes.FORBIDDEN, '活动已结束，无法报名'); }
-      const [existing] = await conn.query(`SELECT id FROM event_sign WHERE event_id=? AND user_vrcid=? FOR UPDATE`, [req.params.id, uid]);
-      if (existing.length > 0) { await conn.rollback(); return ok(res, { alreadySigned: true }); }
-      if (evt[0].maxSign > 0) {
-        const [cnt] = await conn.query(`SELECT COUNT(*) AS c FROM event_sign WHERE event_id=?`, [req.params.id]);
-        if (cnt[0].c >= evt[0].maxSign) { await conn.rollback(); return sendError(res, 400, ErrorCodes.BAD_REQUEST, '活动已满员'); }
+      // 开抢提醒：未到报名开放时间则拒绝（NULL = 立即开放）
+      if (evt[0].signStartAt) {
+        const startMs = new Date(evt[0].signStartAt).getTime();
+        if (Number.isFinite(startMs) && Date.now() < startMs) {
+          await conn.rollback();
+          return sendError(res, 403, ErrorCodes.FORBIDDEN, '报名尚未开始', `报名开放时间：${new Date(startMs).toLocaleString('zh-CN')}`);
+        }
+      }
+      const [existing] = await conn.query(`SELECT id, is_sign, is_waitlist FROM event_sign WHERE event_id=? AND user_vrcid=? FOR UPDATE`, [req.params.id, uid]);
+      if (existing.length > 0) {
+        await conn.rollback();
+        return ok(res, {
+          alreadySigned: !!existing[0].is_sign,
+          alreadyWaitlisted: !!existing[0].is_waitlist
+        });
       }
       const name = req.session.displayName || '用户';
-      await conn.query(`INSERT INTO event_sign (event_id, user_vrcid, user_name, is_sign, sign_time) VALUES (?, ?, ?, 1, NOW())`, [req.params.id, uid, name]);
+      // 满员 → 进候补队列（而不是直接 400），后续有人取消时自动递补
+      let waitlisted = false;
+      if (evt[0].maxSign > 0) {
+        const [cnt] = await conn.query(
+          `SELECT COUNT(*) AS c FROM event_sign WHERE event_id=? AND is_waitlist = 0`, [req.params.id]
+        );
+        if (cnt[0].c >= evt[0].maxSign) waitlisted = true;
+      }
+      if (waitlisted) {
+        await conn.query(
+          `INSERT INTO event_sign (event_id, user_vrcid, user_name, is_sign, sign_time, is_waitlist)
+           VALUES (?, ?, ?, 0, NULL, 1)`, [req.params.id, uid, name]
+        );
+        await conn.commit();
+        const [pos] = await getPool().query(
+          `SELECT COUNT(*) AS c FROM event_sign WHERE event_id = ? AND is_waitlist = 1 AND create_time <= (
+             SELECT create_time FROM event_sign WHERE event_id = ? AND user_vrcid = ?
+           )`, [req.params.id, req.params.id, uid]
+        );
+        return ok(res, { waitlisted: true, position: Number(pos[0]?.c) || 1 });
+      }
+      await conn.query(`INSERT INTO event_sign (event_id, user_vrcid, user_name, is_sign, sign_time, is_waitlist) VALUES (?, ?, ?, 1, NOW(), 0)`, [req.params.id, uid, name]);
       await conn.commit();
       if (notificationService && evt[0].createUserId && evt[0].createUserId !== uid) {
         notificationService.notifyUser(
@@ -641,11 +708,66 @@ router.get('/', async (req, res) => {
     const [[meRow2]] = await getPool().query('SELECT banned FROM users WHERE id = ? AND deleted_at IS NULL', [uid]);
     if (meRow2 && meRow2.banned) return sendError(res, 403, ErrorCodes.FORBIDDEN, '账户已被封禁');
     try {
-      const [[evt]] = await getPool().query(`SELECT event_time AS eventTime, ends_at AS endsAt FROM event WHERE id=?`, [req.params.id]);
+      const [[evt]] = await getPool().query(`SELECT event_time AS eventTime, ends_at AS endsAt, title FROM event WHERE id=?`, [req.params.id]);
       if (eventHasEnded(evt)) return sendError(res, 403, ErrorCodes.FORBIDDEN, '活动已结束，无法取消报名');
+      // 先看这条是正式报名还是候补，决定要不要触发递补
+      const [[mine]] = await getPool().query(
+        `SELECT is_sign, is_waitlist FROM event_sign WHERE event_id=? AND user_vrcid=?`, [req.params.id, uid]
+      );
       await getPool().query(`DELETE FROM event_sign WHERE event_id=? AND user_vrcid=?`, [req.params.id, uid]);
-      ok(res);
+      // 候补递补：取消的是正式报名时，把候补队列第一条转正并通知
+      let promoted = null;
+      if (mine && mine.is_sign && !mine.is_waitlist) {
+        const [next] = await getPool().query(
+          `SELECT id, user_vrcid, user_name, user_id FROM event_sign
+           WHERE event_id = ? AND is_waitlist = 1
+           ORDER BY create_time ASC, id ASC LIMIT 1`, [req.params.id]
+        );
+        if (next.length) {
+          await getPool().query(
+            `UPDATE event_sign SET is_waitlist = 0, is_sign = 1, sign_time = NOW() WHERE id = ?`, [next[0].id]
+          );
+          promoted = { vrchatId: next[0].user_vrcid, name: next[0].user_name };
+          if (notificationService) {
+            notificationService.notifyUser(
+              next[0].user_id || next[0].user_vrcid,
+              'event_promoted',
+              '你已从候补转为正式报名',
+              `活动: ${evt && evt.title ? evt.title : ''}`,
+              { targetType: 'event', targetId: parseInt(req.params.id) }
+            );
+          }
+        }
+      }
+      ok(res, promoted ? { promoted } : {});
     } catch (e) { handleError(res, e, '[events/unsign]'); }
+  });
+
+  // ==================== 候补队列查询 ====================
+  // 返回候补列表（脱敏：只给名字与序号），并标出当前用户的位置
+  router.get('/:id/waitlist', async (req, res) => {
+    try {
+      const uid = req.session?.userId;
+      const [[evt]] = await getPool().query('SELECT id, max_sign AS maxSign FROM event WHERE id = ?', [req.params.id]);
+      if (!evt) return sendError(res, 404, ErrorCodes.NOT_FOUND, '活动不存在');
+      const [rows] = await getPool().query(
+        `SELECT user_vrcid AS vrchatId, user_name AS userName, create_time AS joinedAt
+         FROM event_sign WHERE event_id = ? AND is_waitlist = 1
+         ORDER BY create_time ASC, id ASC LIMIT 200`, [req.params.id]
+      );
+      const list = rows.map((r, i) => ({
+        position: i + 1,
+        name: r.userName || '',
+        isMe: !!uid && String(r.vrchatId) === String(uid)
+      }));
+      const myPos = list.find(x => x.isMe);
+      ok(res, {
+        maxSign: Number(evt.maxSign) || 0,
+        total: list.length,
+        myPosition: myPos ? myPos.position : null,
+        waitlist: list
+      });
+    } catch (e) { handleError(res, e, '[events/waitlist]'); }
   });
 
   // ==================== 活动签到 ====================

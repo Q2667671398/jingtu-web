@@ -390,11 +390,24 @@ async function showEventDetail(id) {
           signBtn.innerHTML = '<span class="event-ended-tag">🚫 ' + __('events.ended') + '</span>';
         } else {
         const isSigned = e.signedByMe === true || signedEvents.has(parseInt(id));
+        const isWaitlisted = e.waitlistedByMe === true;
+        // 开抢提醒：未到报名开放时间 → 显示倒计时，按钮置灰
+        const signOpen = e.signOpen !== false;
         if (currentUser && !currentUser.banned) {
-          if (e.maxSign > 0 && e.signCount >= e.maxSign) {
-            signBtn.innerHTML = '<span class="text-muted">' + __('events.full') + '</span>';
+          if (!signOpen) {
+            signBtn.innerHTML = `<span class="event-sign-countdown" data-sign-start="${escAttr(e.signStartAt || '')}">⏰ ${__('events.sign_opens_soon') || '报名未开始'}</span>`;
+            startSignCountdown(e.signStartAt);
           } else if (isSigned) {
             signBtn.innerHTML = `<button class="btn btn-sm sign-btn-cancel" data-action="evt-unsign" data-evt-id="${id}">${__('events.signed_cancel')}</button>`;
+          } else if (isWaitlisted) {
+            // 候补中：显示位置，可取消候补
+            const pos = e.myWaitlistPosition || '?';
+            signBtn.innerHTML = `<span class="event-waitlist-tag">🕐 ${(__('events.waitlist_at') || '候补中，第 {n} 位').replace('{n}', pos)}</span>
+              <button class="btn btn-sm btn-outline" data-action="evt-unsign" data-evt-id="${id}">${__('events.waitlist_leave') || '退出候补'}</button>`;
+          } else if (e.maxSign > 0 && e.signCount >= e.maxSign) {
+            // 满员：可加入候补
+            signBtn.innerHTML = `<span class="text-muted">${__('events.full')}</span>
+              <button class="btn btn-sm btn-outline" data-action="evt-sign" data-evt-id="${id}">${__('events.join_waitlist') || '加入候补'}</button>`;
           } else {
             signBtn.innerHTML = `<button class="btn btn-sm btn-accent" data-action="evt-sign" data-evt-id="${id}">${__('events.sign_up_btn')}</button>`;
           }
@@ -1344,9 +1357,41 @@ async function disbandTeam(teamId, eventId) {
 // ==================== 事件页内联事件迁移（CSP nonce 拦截属性型处理器） ====================
 // 活动卡片 / 详情弹窗 / 报名 / 评论 / 签到二维码 / 日历月周视图 / 照片 / 队伍
 // 统一改为 data-action + document 级委托，天然覆盖重渲染与懒加载时序。
+// 开抢倒计时：每秒刷新 `.event-sign-countdown`，到点后自动刷新详情以显示报名按钮
+let _signCountdownTimer = null;
+function startSignCountdown(signStartAt) {
+  if (!signStartAt) return;
+  const target = new Date(signStartAt).getTime();
+  if (!Number.isFinite(target)) return;
+  if (_signCountdownTimer) { clearInterval(_signCountdownTimer); _signCountdownTimer = null; }
+  const pad = (n) => String(n).padStart(2, '0');
+  const tick = () => {
+    const left = target - Date.now();
+    if (left <= 0) {
+      if (_signCountdownTimer) { clearInterval(_signCountdownTimer); _signCountdownTimer = null; }
+      const cur = document.querySelector('.event-sign-countdown');
+      if (cur) cur.textContent = '⏰ ' + (__('events.sign_open_now') || '报名已开放');
+      const id = window._currentEventDetail && window._currentEventDetail.id;
+      if (id && typeof showEventDetail === 'function') showEventDetail(id);
+      return;
+    }
+    const totalSec = Math.floor(left / 1000);
+    const days = Math.floor(totalSec / 86400);
+    const hh = Math.floor((totalSec % 86400) / 3600);
+    const mm = Math.floor((totalSec % 3600) / 60);
+    const ss = totalSec % 60;
+    const text = days > 0
+      ? `${days}${__('events.d_unit') || '天'} ${pad(hh)}:${pad(mm)}:${pad(ss)}`
+      : `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+    const cur = document.querySelector('.event-sign-countdown');
+    if (cur) cur.textContent = `⏰ ${__('events.sign_opens_in') || '距报名开放'} ${text}`;
+  };
+  tick();
+  _signCountdownTimer = setInterval(tick, 1000);
+}
+
 let _eventsDelegationHandler = null;
 let _eventsChangeHandler = null;
-
 function _bindEventsDelegation() {
   if (_eventsDelegationHandler) document.removeEventListener('click', _eventsDelegationHandler);
   if (_eventsChangeHandler) document.removeEventListener('change', _eventsChangeHandler);

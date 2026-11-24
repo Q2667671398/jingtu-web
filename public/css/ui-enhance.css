@@ -1855,3 +1855,17 @@ body.home-active .tab-indicator { opacity: 0 !important; }
   font-size: 12px; color: var(--text2, var(--muted, #6b7280));
   margin: 0 6px;
 }
+
+/* 活动候补队列 + 开抢倒计时 */
+.event-waitlist-tag {
+  display: inline-block; padding: 2px 9px; margin-right: 6px;
+  border-radius: 9px; font-size: 12px; font-weight: 600;
+  color: var(--orange, #f59e0b);
+  background: color-mix(in srgb, var(--orange, #f59e0b) 14%, transparent);
+}
+.event-sign-countdown {
+  display: inline-block; padding: 2px 9px; border-radius: 9px;
+  font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
+  color: var(--accent2, #a78bfa);
+  background: color-mix(in srgb, var(--accent, #7c5cfc) 14%, transparent);
+}

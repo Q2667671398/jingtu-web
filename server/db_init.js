@@ -178,9 +178,11 @@ async function initDatabase() {
         user_name VARCHAR(100) NOT NULL,
         is_sign TINYINT DEFAULT 0,
         sign_time DATETIME NULL,
+        is_waitlist TINYINT DEFAULT 0 COMMENT '1=在候补队列（满员时自动进入）',
         create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uk_event_user(event_id, user_vrcid),
-        INDEX idx_event(event_id)
+        INDEX idx_event(event_id),
+        INDEX idx_waitlist(event_id, is_waitlist, create_time)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
       // 相册分类表
@@ -1745,6 +1747,10 @@ async function initDatabase() {
       `ALTER TABLE file_upload_sessions ADD COLUMN access_level VARCHAR(20) DEFAULT 'all' COMMENT '下载权限'`,
       `ALTER TABLE file_upload_sessions ADD COLUMN allowed_group_ids JSON COMMENT '权限分组ID数组'`,
       `ALTER TABLE group_files ADD INDEX idx_group_latest(file_group_id, is_latest)`,
+      // 活动候补队列 + 开抢时间
+      `ALTER TABLE event_sign ADD COLUMN is_waitlist TINYINT DEFAULT 0 COMMENT '1=候补队列'`,
+      `ALTER TABLE event_sign ADD INDEX idx_waitlist(event_id, is_waitlist, create_time)`,
+      `ALTER TABLE event ADD COLUMN sign_start_at DATETIME NULL COMMENT '报名开放时间（NULL=立即开放）'`,
     ]) {
       try {
         await holder.pool.query(sql);
