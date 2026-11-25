@@ -1801,6 +1801,23 @@ async function initDatabase() {
       // V9.3: 用户绑定的 VRChat 会话 cookie（AES-256-GCM 加密，与 session 同格式）。
       //   换浏览器/新会话时从本列恢复，免去每次换设备都要重新绑定 VRChat。
       `ALTER TABLE users ADD COLUMN vrchat_token_enc VARCHAR(1000) COMMENT 'VRChat会话cookie AES加密（跨浏览器绑定恢复用）'`,
+      // WebAuthn 通行密钥（Passkey）：网站可原生调用浏览器认证器（Windows Hello / 指纹 / 手机）
+      `CREATE TABLE IF NOT EXISTS webauthn_credentials (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL COMMENT '所属用户 users.id',
+        credential_id VARCHAR(512) NOT NULL COMMENT '凭据 ID（base64url，认证器生成）',
+        public_key TEXT NOT NULL COMMENT 'COSE 公钥（base64）',
+        counter BIGINT NOT NULL DEFAULT 0 COMMENT '签名计数器（防克隆，每次认证须递增）',
+        transports VARCHAR(120) DEFAULT '' COMMENT '传输方式 usb/nfc/ble/internal/hybrid（逗号分隔）',
+        device_type VARCHAR(20) DEFAULT '' COMMENT 'singleDevice / multiDevice',
+        backed_up TINYINT(1) DEFAULT 0 COMMENT '是否已备份（可跨设备同步的通行密钥）',
+        aaguid VARCHAR(64) DEFAULT '' COMMENT '认证器型号标识',
+        name VARCHAR(100) DEFAULT '' COMMENT '用户自定义名称（如「我的笔记本」）',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_used_at DATETIME NULL COMMENT '最近一次成功认证时间',
+        UNIQUE KEY uk_credential(credential_id),
+        INDEX idx_user(user_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     ];
     let migrationErrors = [];
     for (const sql of usersSecurityCols) {

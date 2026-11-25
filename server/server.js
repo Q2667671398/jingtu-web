@@ -626,6 +626,9 @@ const {
 require('./routes/admin_vrc_blacklist').setSystemVRCCookieFn(getVRCCookie);
 
 // ==================== 权限路由 ====================
+// WebAuthn 通行密钥（Passkey）：网站原生调用浏览器认证器，点按钮 + 指纹/面容即可登录。
+// 必须挂在 /api/auth 之前——否则会被 auth_routes 的同前缀路由先接管。
+app.use('/api/auth/webauthn', require('./routes/webauthn_routes')());
 app.use('/api/auth', require('./routes/auth_routes'));
 app.use('/api/profile', require('./routes/profile'));
 

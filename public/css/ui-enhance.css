@@ -1869,3 +1869,19 @@ body.home-active .tab-indicator { opacity: 0 !important; }
   color: var(--accent2, #a78bfa);
   background: color-mix(in srgb, var(--accent, #7c5cfc) 14%, transparent);
 }
+
+/* WebAuthn 通行密钥 */
+.login-btn-passkey {
+  margin-top: 10px;
+  background: transparent !important;
+  border: 1px solid var(--border, #e5e7eb) !important;
+  color: var(--text, inherit) !important;
+}
+.login-btn-passkey:hover { background: var(--hover, rgba(0,0,0,.05)) !important; }
+.passkey-row {
+  display: flex; gap: 10px; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid var(--border, #e5e7eb);
+}
+.passkey-row:last-child { border-bottom: none; }
+.passkey-icon { flex: 0 0 auto; font-size: 18px; }
+.passkey-main { flex: 1; min-width: 0; }
