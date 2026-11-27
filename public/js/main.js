@@ -346,8 +346,15 @@ function connectWebSocket() {
       // V6.12: 聊天消息
       if (msg.type === 'chat:new' || msg.type === 'chat:sent') {
         if (typeof handleChatMessage === 'function') handleChatMessage(msg);
-        if (typeof loadChatConversations === 'function' && activeTab !== 'chat') {
-          setTimeout(loadChatConversations, 500);
+        // PERF-04：原来此处裸 setTimeout(loadChatConversations, 500)，与 chat.js 的
+        // scheduleChatListRefresh（2.5s 防抖）构成**双重刷新**：一条消息触发两次
+        // loadChatConversations，而每次要发 3 个并行请求（conversations/groups/unread）。
+        // 且裸 setTimeout 不 clearTimeout，N 条消息会叠 N 个定时器。
+        // 现统一走 chat.js 的防抖入口。
+        if (typeof scheduleChatListRefresh === 'function') {
+          scheduleChatListRefresh();
+        } else if (typeof loadChatConversations === 'function' && activeTab !== 'chat') {
+          setTimeout(loadChatConversations, 500); // 兜底：chat 模块未加载时保留旧行为
         }
       }
       // V6.13: 群聊消息+实时位置

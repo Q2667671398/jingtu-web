@@ -118,6 +118,32 @@ function startSchedule() {
     }
   };
 
+  // DET-05：下面 4 个「每分钟」任务（friendLog / worldVisit / activitySessions / avatarHistory）
+  // 原本各自执行一次 `SELECT ... FROM group_roster WHERE is_friend = 1`（字段略有不同）。
+  // 即每分钟对同一张表做 4 次全表读；好友数越多、越浪费，且 4 个任务的观测时刻不一致，
+  // 可能出现「friendLog 看到 A 在线、activitySessions 看到 A 离线」的记录错乱。
+  // 改为共享快照：同一次 cron 触发内只查 1 次（取字段并集），30s TTL 覆盖同一分钟的 4 个任务。
+  // 安全性：这 4 个任务都**只读** group_roster（写的是各自的 *_log 表），共享快照不会互相污染。
+  const ROSTER_SNAPSHOT_TTL_MS = 30 * 1000;
+  let _rosterSnapshot = { at: 0, rows: null };
+  async function getFriendsSnapshot() {
+    const now = Date.now();
+    if (_rosterSnapshot.rows && now - _rosterSnapshot.at < ROSTER_SNAPSHOT_TTL_MS) {
+      return _rosterSnapshot.rows;
+    }
+    const [rows] = await getPool().query(
+      `SELECT vrchat_id, display_name, avatar_url, avatar_id, is_online, vrchat_status, world_name
+       FROM group_roster
+       WHERE is_friend = 1 AND vrchat_id IS NOT NULL AND vrchat_id != ''`
+    );
+    _rosterSnapshot = { at: now, rows };
+    return rows;
+  }
+  /** 名册变动后主动失效（手动同步、成员状态批量写回时调用），避免吃陈旧快照 */
+  function invalidateRosterSnapshot() {
+    _rosterSnapshot = { at: 0, rows: null };
+  }
+
   // 每天凌晨 2:00 — 清理超过 7 天的回收站图片
   jobs.push(schedule.scheduleJob('0 0 2 * * *', async () => {
     logger.info('schedule', '🔄 [定时任务] 开始清理过期回收站图片...');
@@ -804,10 +830,8 @@ function startSchedule() {
     try {
       const pool = getPool();
       // 取所有可信好友（is_friend=1）的当前关键状态字段
-      const [rows] = await pool.query(
-        `SELECT vrchat_id, display_name, avatar_url, is_online, vrchat_status, world_name
-         FROM group_roster WHERE is_friend = 1 AND vrchat_id IS NOT NULL AND vrchat_id != ''`
-      );
+      // DET-05：走共享快照（同一次 cron 触发内 4 个任务只查 1 次，字段取并集）
+      const rows = await getFriendsSnapshot();
       if (!rows.length) return;
 
       // 读当前态快照（跨轮次比较基准）
@@ -847,35 +871,51 @@ function startSchedule() {
       }
 
       // 批量写历史（去重：同一 vrchat_id + type + new_value 在 60 秒内不重复写，防抖动刷屏）
+      // PERF-12：原实现逐条 `SELECT 判重 + INSERT`（N 条变化 = 2N 次往返，每分钟跑）。
+      // 改为：①一次查出涉及的 vrchat_id 在 60s 内的全部记录建 Set 判重；②批量多值 INSERT。
       if (historyInserts.length) {
-        for (const h of historyInserts) {
-          const [dup] = await pool.query(
-            `SELECT id FROM friend_log WHERE vrchat_id=? AND change_type=? AND new_value=? AND created_at >= NOW() - INTERVAL 60 SECOND`,
-            [h[0], h[1], h[3]]
+        const ids = [...new Set(historyInserts.map(h => h[0]))];
+        const dupSet = new Set();
+        // 分批 IN，避免 SQL 过长
+        for (let i = 0; i < ids.length; i += 200) {
+          const chunk = ids.slice(i, i + 200);
+          const [dups] = await pool.query(
+            `SELECT vrchat_id, change_type, new_value FROM friend_log
+             WHERE created_at >= NOW() - INTERVAL 60 SECOND
+               AND vrchat_id IN (${chunk.map(() => '?').join(',')})`,
+            chunk
           );
-          if (!dup.length) {
-            await pool.query(
-              `INSERT INTO friend_log (vrchat_id, change_type, old_value, new_value) VALUES (?,?,?,?)`,
-              h
-            );
-          }
+          for (const d of dups) dupSet.add(`${d.vrchat_id}|${d.change_type}|${d.new_value}`);
+        }
+        const toInsert = historyInserts.filter(h => !dupSet.has(`${h[0]}|${h[1]}|${h[3]}`));
+        for (let i = 0; i < toInsert.length; i += 100) {
+          const chunk = toInsert.slice(i, i + 100);
+          await pool.query(
+            `INSERT INTO friend_log (vrchat_id, change_type, old_value, new_value) VALUES ${chunk.map(() => '(?,?,?,?)').join(',')}`,
+            chunk.flat()
+          );
         }
       }
 
       // 批量 UPSERT 当前态快照（磁盘 IO 优化 F-40：值无变化的行跳过重写，
       // 当前态表仅作跨轮次 diff 基准，synced_at 无读取方，跳过不影响任何展示/排序）
+      // PERF-12：原实现逐条 UPSERT，现先过滤再批量多值写。
       if (currentUpserts.length) {
-        for (const c of currentUpserts) {
+        const changed = currentUpserts.filter(c => {
           const [cid, disp, ava, online, status, world] = c;
           const p = curMap.get(cid);
-          if (p && (p.display_name || '') === disp && (p.avatar_url || '') === ava && p.is_online === online &&
-              (p.vrchat_status || 'offline') === status && (p.world_name || '') === world) continue;
+          if (!p) return true;
+          return !((p.display_name || '') === disp && (p.avatar_url || '') === ava && p.is_online === online &&
+                   (p.vrchat_status || 'offline') === status && (p.world_name || '') === world);
+        });
+        for (let i = 0; i < changed.length; i += 100) {
+          const chunk = changed.slice(i, i + 100);
           await pool.query(
             `INSERT INTO friend_log_current (vrchat_id, display_name, avatar_url, is_online, vrchat_status, world_name)
-             VALUES (?,?,?,?,?,?)
+             VALUES ${chunk.map(() => '(?,?,?,?,?,?)').join(',')}
              ON DUPLICATE KEY UPDATE display_name=VALUES(display_name), avatar_url=VALUES(avatar_url),
                is_online=VALUES(is_online), vrchat_status=VALUES(vrchat_status), world_name=VALUES(world_name), synced_at=NOW()`,
-            c
+            chunk.flat()
           );
         }
       }
@@ -891,9 +931,8 @@ function startSchedule() {
     if (isRestoring()) return; // T-15/S-07：恢复期跳过写库
     try {
       const pool = getPool();
-      const [rows] = await pool.query(
-        `SELECT vrchat_id, world_name FROM group_roster WHERE is_friend = 1 AND vrchat_id IS NOT NULL AND vrchat_id != ''`
-      );
+      // DET-05：走共享快照（同一次 cron 触发内 4 个任务只查 1 次，字段取并集）
+      const rows = await getFriendsSnapshot();
       if (!rows.length) return;
 
       // 读当前态快照（跨轮次比较基准）
@@ -921,26 +960,33 @@ function startSchedule() {
       }
 
       // 批量写访问事件：同 (vrchat_id, world_id) 聚合访问次数，首次/最近访问时间
-      for (const ev of events) {
+      // PERF-12：原逐条 INSERT，改批量多值写（每批 100）
+      for (let i = 0; i < events.length; i += 100) {
+        const chunk = events.slice(i, i + 100);
         await pool.query(
           `INSERT INTO world_visit_log (vrchat_id, world_id, world_name, visit_count, first_visit_at, last_visit_at)
-           VALUES (?,?,?,1,NOW(),NOW())
+           VALUES ${chunk.map(() => '(?,?,?,1,NOW(),NOW())').join(',')}
            ON DUPLICATE KEY UPDATE visit_count = visit_count + 1, last_visit_at = NOW(), world_name = VALUES(world_name)`,
-          [ev.vrchatId, ev.worldId, ev.worldName]
+          chunk.flatMap(ev => [ev.vrchatId, ev.worldId, ev.worldName])
         );
       }
 
       // 批量 UPSERT 当前态快照（磁盘 IO 优化 F-40：世界无变化的行跳过重写）
+      // PERF-12：原逐条 UPSERT，现先过滤再批量写
       if (currentUpserts.length) {
-        for (const c of currentUpserts) {
+        const changed = currentUpserts.filter(c => {
           const [cid, worldId, worldName2] = c;
           const p = curMap.get(cid);
-          if (p && (p.world_id || '') === (worldId || '') && (p.world_name || '') === (worldName2 || '')) continue;
+          if (!p) return true;
+          return !((p.world_id || '') === (worldId || '') && (p.world_name || '') === (worldName2 || ''));
+        });
+        for (let i = 0; i < changed.length; i += 100) {
+          const chunk = changed.slice(i, i + 100);
           await pool.query(
             `INSERT INTO world_visit_current (vrchat_id, world_id, world_name)
-             VALUES (?,?,?)
+             VALUES ${chunk.map(() => '(?,?,?)').join(',')}
              ON DUPLICATE KEY UPDATE world_id=VALUES(world_id), world_name=VALUES(world_name), synced_at=NOW()`,
-            c
+            chunk.flat()
           );
         }
       }
@@ -956,10 +1002,8 @@ function startSchedule() {
     if (isRestoring()) return; // T-15/S-07：恢复期跳过写库
     try {
       const pool = getPool();
-      const [rows] = await pool.query(
-        `SELECT vrchat_id, is_online, world_name FROM group_roster
-         WHERE is_friend = 1 AND vrchat_id IS NOT NULL AND vrchat_id != ''`
-      );
+      // DET-05：走共享快照（同一次 cron 触发内 4 个任务只查 1 次，字段取并集）
+      const rows = await getFriendsSnapshot();
       if (!rows.length) return;
 
       // 超长分段（SQL 侧判定，无 JS/MySQL 时区差异）：进行中会话超过 30 小时 → 封口到 24 小时处，
@@ -1012,9 +1056,8 @@ function startSchedule() {
     if (isRestoring()) return; // T-15/S-07：恢复期跳过写库
     try {
       const pool = getPool();
-      const [rows] = await pool.query(
-        `SELECT vrchat_id, avatar_id, avatar_url FROM group_roster WHERE is_friend = 1 AND vrchat_id IS NOT NULL AND vrchat_id != ''`
-      );
+      // DET-05：走共享快照（同一次 cron 触发内 4 个任务只查 1 次，字段取并集）
+      const rows = await getFriendsSnapshot();
       if (!rows.length) return;
 
       // 读当前态快照（跨轮次比较基准）
@@ -1043,27 +1086,34 @@ function startSchedule() {
       }
 
       // 批量写使用事件：同 (vrchat_id, avatar_id) 聚合使用次数，首次/最近使用时间
-      for (const ev of events) {
+      // PERF-12：原逐条 INSERT，改批量多值写
+      for (let i = 0; i < events.length; i += 100) {
+        const chunk = events.slice(i, i + 100);
         await pool.query(
           `INSERT INTO avatar_history_log (vrchat_id, avatar_id, avatar_url, use_count, first_seen_at, last_seen_at)
-           VALUES (?,?,?,1,NOW(),NOW())
+           VALUES ${chunk.map(() => '(?,?,?,1,NOW(),NOW())').join(',')}
            ON DUPLICATE KEY UPDATE use_count = use_count + 1, last_seen_at = NOW(), avatar_url = VALUES(avatar_url)`,
-          [ev.vrchatId, ev.avatarId, ev.avatarUrl]
+          chunk.flatMap(ev => [ev.vrchatId, ev.avatarId, ev.avatarUrl])
         );
       }
 
       // 批量 UPSERT 当前态快照（磁盘 IO 优化 F-40：头像无变化的行跳过重写；
       // avatar_history_current.synced_at 被 avatar.js 用于取最近头像，头像不变时跳过不影响结果）
+      // PERF-12：原逐条 UPSERT，现先过滤再批量写
       if (currentUpserts.length) {
-        for (const c of currentUpserts) {
+        const changed = currentUpserts.filter(c => {
           const [cid, avatarId, avatarUrl] = c;
           const p = curMap.get(cid);
-          if (p && (p.avatar_id || '') === (avatarId || '') && (p.avatar_url || '') === (avatarUrl || '')) continue;
+          if (!p) return true;
+          return !((p.avatar_id || '') === (avatarId || '') && (p.avatar_url || '') === (avatarUrl || ''));
+        });
+        for (let i = 0; i < changed.length; i += 100) {
+          const chunk = changed.slice(i, i + 100);
           await pool.query(
             `INSERT INTO avatar_history_current (vrchat_id, avatar_id, avatar_url)
-             VALUES (?,?,?)
+             VALUES ${chunk.map(() => '(?,?,?)').join(',')}
              ON DUPLICATE KEY UPDATE avatar_id=VALUES(avatar_id), avatar_url=VALUES(avatar_url), synced_at=NOW()`,
-            c
+            chunk.flat()
           );
         }
       }

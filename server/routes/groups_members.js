@@ -134,59 +134,100 @@ module.exports = function (getVRCCookieFn, GROUP_ID, getUserVRCCookieFn) {
   });
 
   // ==================== 群组实时统计 ====================
+  // PERF-11：本接口原为 10 条**串行** await（4 条 COUNT + 3 条 GROUP BY + 2 条 LIMIT + 1 条今日变更）。
+  // 前端 30s 轮询一次，20 人在该 Tab 就是 ~52 万条查询/天，且每次要串 10 个 RTT。
+  // 优化：
+  //   1) 4 条 COUNT 合并为 1 条条件聚合（SUM(col=1)）
+  //   2) 其余查询 Promise.all 并行（延迟从 10×RTT 降到 ~1×RTT）
+  //   3) 加 25s 进程内缓存（< 前端 30s 轮询周期，最多陈旧 25s，统计概览可接受）
+  let _statsCache = { at: 0, data: null };
+  const STATS_CACHE_TTL = 25000;
+
   router.get('/group/stats', requireAuth, async (req, res) => {
     try {
+      // 缓存命中直接返回（避免高频轮询打 DB）
+      if (_statsCache.data && Date.now() - _statsCache.at < STATS_CACHE_TTL) {
+        return res.json(_statsCache.data);
+      }
       const pool = getPool();
-      const [totalRes] = await pool.query(`SELECT COUNT(*) as count FROM group_roster WHERE is_member=1`);
-      const [onlineRes] = await pool.query(`SELECT COUNT(*) as count FROM group_roster WHERE is_member=1 AND is_online=1`);
-      const [inGameRes] = await pool.query(`SELECT COUNT(*) as count FROM group_roster WHERE is_member=1 AND is_in_game=1`);
-      const [unknownRes] = await pool.query(`SELECT COUNT(*) as count FROM group_roster WHERE is_member=1 AND is_online=1 AND is_friend=0`);
-      const [statusRes] = await pool.query(`SELECT vrchat_status AS status, COUNT(*) as count FROM group_roster WHERE is_member=1 GROUP BY vrchat_status`);
-      const [worldRes] = await pool.query(`SELECT world_name AS worldName, COUNT(*) as count FROM group_roster WHERE is_member=1 AND is_online=1 AND world_name IS NOT NULL AND world_name != '' GROUP BY world_name ORDER BY count DESC LIMIT 10`);
-      const [locationRes] = await pool.query(`SELECT location, COUNT(*) as count FROM group_roster WHERE is_member=1 AND is_online=1 AND location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10`);
-      const [recentRes] = await pool.query(`SELECT vrchat_name AS displayName, vrchat_status AS status, world_name AS worldName, last_seen AS lastSeen FROM group_roster WHERE is_member=1 ORDER BY last_seen DESC LIMIT 10`);
-      // 用范围比较而非 DATE(col)=CURDATE()：函数包裹列会导致索引失效（无法做范围查找）
-      const [joinedTodayRes] = await pool.query(`SELECT COUNT(*) as count FROM group_roster WHERE is_member=1 AND joined_at >= CURDATE() AND joined_at < CURDATE() + INTERVAL 1 DAY`);
-      const [leftTodayRes] = await pool.query(`SELECT COUNT(*) as count FROM group_member_changes WHERE change_type='left' AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY`);
+
+      // 1) 一条条件聚合替代 4 条 COUNT
+      //    注意 joined_at 用半开区间而非 DATE(col)=CURDATE()（后者会让索引失效）
+      const aggPromise = pool.query(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(is_online = 1) AS onlineCnt,
+           SUM(is_in_game = 1) AS inGameCnt,
+           SUM(is_online = 1 AND is_friend = 0) AS unknownCnt,
+           SUM(joined_at >= CURDATE() AND joined_at < CURDATE() + INTERVAL 1 DAY) AS joinedToday
+         FROM group_roster WHERE is_member = 1`
+      );
+
+      // 2) 其余查询并行（彼此无依赖）
+      const [aggRes, statusRes, worldRes, locationRes, recentRes, leftTodayRes] = await Promise.all([
+        aggPromise,
+        pool.query(`SELECT vrchat_status AS status, COUNT(*) as count FROM group_roster WHERE is_member=1 GROUP BY vrchat_status`),
+        pool.query(`SELECT world_name AS worldName, COUNT(*) as count FROM group_roster WHERE is_member=1 AND is_online=1 AND world_name IS NOT NULL AND world_name != '' GROUP BY world_name ORDER BY count DESC LIMIT 10`),
+        pool.query(`SELECT location, COUNT(*) as count FROM group_roster WHERE is_member=1 AND is_online=1 AND location IS NOT NULL AND location != '' GROUP BY location ORDER BY count DESC LIMIT 10`),
+        pool.query(`SELECT vrchat_name AS displayName, vrchat_status AS status, world_name AS worldName, last_seen AS lastSeen FROM group_roster WHERE is_member=1 ORDER BY last_seen DESC LIMIT 10`),
+        pool.query(`SELECT COUNT(*) as count FROM group_member_changes WHERE change_type='left' AND created_at >= CURDATE() AND created_at < CURDATE() + INTERVAL 1 DAY`)
+      ]);
+
+      const agg = (aggRes[0] && aggRes[0][0]) || {};
+      // SUM() 在全表为空时返回 NULL，统一转 0
+      const totalMembers = Number(agg.total) || 0;
+      const onlineCount = Number(agg.onlineCnt) || 0;
+      const inGameCount = Number(agg.inGameCnt) || 0;
+      const unknownCount = Number(agg.unknownCnt) || 0;
+      const joinedToday = Number(agg.joinedToday) || 0;
 
       const statusMap = {};
-      for (const row of statusRes) {
+      for (const row of (statusRes[0] || [])) {
         statusMap[row.status] = row.count;
       }
 
-      const webOnlineCount = onlineRes[0].count - inGameRes[0].count; // 网页端在线 = 账号在线 - 游戏内在线
-      const worldDistribution = worldRes.map(r => ({ worldName: r.worldName, count: r.count }));
-      const locationDistribution = locationRes.map(r => ({ location: r.location, count: r.count }));
+      const webOnlineCount = onlineCount - inGameCount; // 网页端在线 = 账号在线 - 游戏内在线
+      const worldDistribution = (worldRes[0] || []).map(r => ({ worldName: r.worldName, count: r.count }));
+      const locationDistribution = (locationRes[0] || []).map(r => ({ location: r.location, count: r.count }));
 
-      res.json({
-        totalMembers: totalRes[0].count,
-        onlineCount: onlineRes[0].count,
-        inGameCount: inGameRes[0].count,
+      const payload = {
+        totalMembers,
+        onlineCount,
+        inGameCount,
         webOnlineCount,
-        offlineCount: totalRes[0].count - onlineRes[0].count,
-        unknownCount: unknownRes[0].count,
-        onlineRate: totalRes[0].count > 0 ? Math.round((onlineRes[0].count / totalRes[0].count) * 100) : 0,
+        offlineCount: totalMembers - onlineCount,
+        unknownCount,
+        onlineRate: totalMembers > 0 ? Math.round((onlineCount / totalMembers) * 100) : 0,
         statusDistribution: {
           active: statusMap['active'] || 0,
           online: statusMap['online'] || statusMap['join me'] || statusMap['ask me'] || statusMap['busy'] || 0,
           offline: statusMap['offline'] || 0,
           web: webOnlineCount,
-          ingame: inGameRes[0].count
+          ingame: inGameCount
         },
         worldDistribution,
         locationDistribution,
-        recentMembers: recentRes.map(r => ({
+        recentMembers: (recentRes[0] || []).map(r => ({
           displayName: r.displayName,
           status: r.status,
           worldName: r.worldName,
           lastSeen: r.lastSeen
         })),
-        joinedToday: joinedTodayRes[0].count,
-        leftToday: leftTodayRes[0].count,
+        joinedToday,
+        leftToday: Number((leftTodayRes[0] && leftTodayRes[0][0] && leftTodayRes[0][0].count)) || 0,
         updatedAt: new Date().toISOString()
-      });
+      };
+
+      _statsCache = { at: Date.now(), data: payload };
+      res.json(payload);
     } catch (e) { handleError(res, e, 'groups/stats'); }
   });
+
+  /** 名册同步后调用，让统计缓存立即失效（避免展示同步前的旧数字） */
+  function invalidateStatsCache() {
+    _statsCache = { at: 0, data: null };
+  }
+  router.__invalidateStatsCache = invalidateStatsCache;
 
   // ==================== 在线成员世界分布详情 ====================
   // 返回群组成员当前所在 VRChat 世界聚合：包含房间真实总人数（调用 VRC API 查询实例）、

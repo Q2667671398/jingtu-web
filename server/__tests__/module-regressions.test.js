@@ -107,11 +107,19 @@ describe('map module regressions', () => {
     const ws = readServer('ws_service.js');
     const handleUpdate = extractFunction(ws, 'handleLocationUpdate');
     const persistLocation = extractFunction(ws, 'persistLocation');
-    expect(handleUpdate).toMatch(/persistLocation\(userId,\s*lat,\s*lng\)/);
+    // PERF-05：落库改为节流调度（DB 写入从每 5s 降到每 60s），但仍必须真的落库，
+    // 且在广播之前登记（保证广播出去的位置一定会被持久化）。
+    expect(handleUpdate).toMatch(/schedulePersistLocation\(userId,\s*lat,\s*lng\)/);
     expect(handleUpdate).toMatch(/broadcastAllExcept\(ws,\s*\{\s*type:\s*['"]location:update['"]/s);
-    expect(handleUpdate.indexOf('persistLocation(userId, lat, lng)')).toBeLessThan(handleUpdate.indexOf('broadcastAllExcept'));
+    expect(handleUpdate.indexOf('schedulePersistLocation(userId, lat, lng)')).toBeLessThan(handleUpdate.indexOf('broadcastAllExcept'));
+    // 底层持久化逻辑本身未变
     expect(persistLocation).toMatch(/UPDATE\s+users\s+SET\s+lat\s*=\s*\?,\s*lng\s*=\s*\?,\s*location_updated_at\s*=\s*NOW\(\)/i);
     expect(persistLocation).toMatch(/WHERE\s+id\s*=\s*\?\s+AND\s+location_visible\s*=\s*1/i);
+    // 节流周期必须为 60s（防止被改回 5s 直写）
+    expect(ws).toMatch(/LOCATION_PERSIST_INTERVAL_MS\s*=\s*60000/);
+    // 停止共享必须丢弃待写坐标，避免把「已关闭共享」的最后坐标写回库
+    const stopLocation = extractFunction(ws, 'stopLocation');
+    expect(stopLocation).toMatch(/dropPendingLocation/);
   });
 
   // 防止前端把 visible 发给 /me/profile；真正会写 location_visible 的端点是 /me/location。

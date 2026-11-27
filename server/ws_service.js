@@ -559,7 +559,12 @@ function setupWebSocket(server) {
 
 function forceOffline(userId, reason) {
   onlineUsers.delete(userId);
-  
+
+  // PERF-05：断线时把待落库的最后一个坐标立刻写下去（保留最近位置，
+  // 与原有「断线不清坐标」的语义一致）。若用户是主动停止共享，
+  // stopLocation 已先调用 dropPendingLocation，这里不会再写。
+  flushPendingLocation(userId);
+
   const conns = userWsMap.get(userId);
   if (conns) {
     for (const ws of conns) {
@@ -594,7 +599,7 @@ function debounce(key, fn) {
 // P-2: location_visible 短 TTL 内存缓存——高频位置消息不再逐条查库（4.5s/人/次 × 在线人数）。
 // 隐私开关切换时由 users_profile.js 的 /me/location 路由调用 invalidateLocationVisibleCache 立即失效，
 // TTL 到期兜底，隐私关闭最迟 10s 生效（与 debounce 延迟同量级）。
-const LOCATION_VISIBLE_TTL = 10000;
+const LOCATION_VISIBLE_TTL = 30000;
 const locationVisibleCache = new Map(); // userId -> { value: boolean, at: timestamp }
 function invalidateLocationVisibleCache(userId) {
   if (userId != null) locationVisibleCache.delete(String(userId));
@@ -654,13 +659,22 @@ async function handleLocationUpdate(userId, msg, ws) {
   const debounceKey = `location:${userId}`;
   debounce(debounceKey, async () => {
     try {
-      // 双保险：debounce 触发时再次核实隐私开关（可能在此期间被关闭）
-      const [vis2] = await getPool().query(
-        'SELECT location_visible FROM users WHERE id = ? AND deleted_at IS NULL', [userId]);
-      const visibleNow = vis2.length > 0 && vis2[0].location_visible === 1;
+      // PERF-16：复用 TTL 缓存（TTL 10s < 上报间隔 5s 的上一版会偶发回源，这里延长到 30s），
+      // 不再每次上报都查一次 users。隐私开关变更时 invalidateLocationVisibleCache 会主动失效。
+      let visibleNow = false;
+      const cached2 = locationVisibleCache.get(String(userId));
+      if (cached2 && Date.now() - cached2.at < LOCATION_VISIBLE_TTL) {
+        visibleNow = cached2.value;
+      } else {
+        const [vis2] = await getPool().query(
+          'SELECT location_visible FROM users WHERE id = ? AND deleted_at IS NULL', [userId]);
+        visibleNow = vis2.length > 0 && vis2[0].location_visible === 1;
+        locationVisibleCache.set(String(userId), { value: visibleNow, at: Date.now() });
+      }
       if (!visibleNow) return;
-      // 持久化：仅在用户已开启位置共享时写入
-      persistLocation(userId, lat, lng);
+      // 广播保持 5s 实时（用户看到的位置不受影响）；
+      // PERF-05：落库走节流，见 schedulePersistLocation —— 原实现每次上报都 UPDATE users。
+      schedulePersistLocation(userId, lat, lng);
       broadcastAllExcept(ws, {
         type: 'location:update',
         ...locationData
@@ -669,6 +683,55 @@ async function handleLocationUpdate(userId, msg, ws) {
       logger.warn('ws', '[ws] 位置广播隐私校验失败:', e.message);
     }
   });
+}
+
+// ==================== PERF-05：位置落库节流 ====================
+// 背景：前端每 5s 上报一次位置，原实现每次都 `UPDATE users SET lat,lng,...`。
+// 10 个共享者 = 17.3 万次 UPDATE/天，而 users 是全站最热表（每次鉴权都读），
+// 行锁 + 二级索引 + binlog + 刷盘全部被位置上报放大。
+// 方案：内存态（onlineUsers.location）已实时，广播仍 5s；DB 落库降到 60s 一次。
+// 副作用可控：位置本身是「最近位置」，60s 精度足够；停止共享/断线时会 flush 兜底。
+const LOCATION_PERSIST_INTERVAL_MS = 60000;
+const _pendingLocationPersist = new Map(); // userId -> { lat, lng, timer }
+
+function schedulePersistLocation(userId, lat, lng) {
+  const key = String(userId);
+  const now = Date.now();
+  const pending = _pendingLocationPersist.get(key);
+  // 记录最新坐标（覆盖上一份，避免过期坐标落库）
+  if (pending) {
+    pending.lat = lat;
+    pending.lng = lng;
+    pending.at = now;
+    return; // 已有定时器在等，到点会写最新值
+  }
+  const entry = { lat, lng, at: now, timer: null };
+  entry.timer = setTimeout(() => {
+    _pendingLocationPersist.delete(key);
+    persistLocation(key, entry.lat, entry.lng);
+  }, LOCATION_PERSIST_INTERVAL_MS);
+  // 定时器不应阻止进程退出
+  if (entry.timer && typeof entry.timer.unref === 'function') entry.timer.unref();
+  _pendingLocationPersist.set(key, entry);
+}
+
+/** 立即把待落库的位置写下去（停止共享 / 断线 / 优雅关闭时调用） */
+function flushPendingLocation(userId) {
+  const key = String(userId);
+  const pending = _pendingLocationPersist.get(key);
+  if (!pending) return;
+  if (pending.timer) clearTimeout(pending.timer);
+  _pendingLocationPersist.delete(key);
+  persistLocation(key, pending.lat, pending.lng);
+}
+
+/** 丢弃待落库位置（用户关闭共享时用，避免把最后一次坐标写进库） */
+function dropPendingLocation(userId) {
+  const key = String(userId);
+  const pending = _pendingLocationPersist.get(key);
+  if (!pending) return;
+  if (pending.timer) clearTimeout(pending.timer);
+  _pendingLocationPersist.delete(key);
 }
 
 async function persistLocation(userId, lat, lng) {
@@ -693,6 +756,10 @@ function stopLocation(userId, ws) {
   if (onlineUsers.has(userId)) {
     onlineUsers.get(userId).location = null;
   }
+
+  // PERF-05：停止共享时丢弃待落库坐标 —— 否则节流定时器到点会把
+  // 「用户已不再共享的最后一次坐标」写回去，造成隐私泄漏。
+  dropPendingLocation(userId);
 
   // 停止共享时清除服务端坐标，避免他人仍从 /all/locations 读到陈旧位置
   if (isRestoring()) return; // T-15/S-07：恢复期暂停写库
@@ -1518,6 +1585,11 @@ module.exports = {
   broadcastToGroupWithTier,
   broadcastAllExcept,
   invalidateLocationVisibleCache,
+  // PERF-05：位置落库节流的内部句柄（供测试与运维排查）
+  schedulePersistLocation,
+  flushPendingLocation,
+  dropPendingLocation,
+  LOCATION_PERSIST_INTERVAL_MS,
   gracefulShutdown,
   getOnlineUsers,
   invalidateGroupMemberCache,
