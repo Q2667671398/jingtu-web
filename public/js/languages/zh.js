@@ -1401,6 +1401,7 @@ window._LANG_ZH = {
   "rtc.incoming": "邀请你通话",
   "rtc.accept": "接听",
   "rtc.decline": "拒绝",
+  "rtc.missed_call": "未接来电（45 秒无应答已自动取消）",
   "rtc.busy": "对方正忙",
   "rtc.offline": "对方当前不在线",
   "rtc.media_error": "无法获取麦克风/摄像头权限，请检查浏览器设置",

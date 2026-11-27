@@ -418,6 +418,8 @@ function switchTab(tab, force) {
     contentEl.style.animation = 'none';
     requestAnimationFrame(() => requestAnimationFrame(() => { contentEl.style.animation = ''; }));
   }
+  // PERF-01：离开活动页时停掉开抢倒计时，避免元素已消失仍每秒空转
+  if (tab !== 'events' && typeof stopSignCountdown === 'function') stopSignCountdown();
   if (tab === 'home') loadHome();
   else if (tab === 'members') loadMembers();
   else if (tab === 'vrc') { if (typeof clearGroupBadge === 'function') clearGroupBadge(); loadGroupMembers(); if (typeof startGroupPolling === 'function') startGroupPolling(); if (typeof switchVrcView === 'function') { switchVrcView(window.__vrcPendingView || 'group'); window.__vrcPendingView = null; } }

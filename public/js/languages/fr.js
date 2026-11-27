@@ -1322,6 +1322,7 @@ window._LANG_FR = {
   "rtc.incoming": "vous invite à un appel",
   "rtc.accept": "Accepter",
   "rtc.decline": "Refuser",
+  "rtc.missed_call": "Appel manqué (annulé après 45 s sans réponse)",
   "rtc.busy": "L'interlocuteur est occupé",
   "rtc.offline": "L'interlocuteur est hors ligne",
   "rtc.media_error": "Impossible d'accéder au micro/caméra, vérifiez les paramètres du navigateur",

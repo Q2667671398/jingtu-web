@@ -1359,18 +1359,26 @@ async function disbandTeam(teamId, eventId) {
 // 统一改为 data-action + document 级委托，天然覆盖重渲染与懒加载时序。
 // 开抢倒计时：每秒刷新 `.event-sign-countdown`，到点后自动刷新详情以显示报名按钮
 let _signCountdownTimer = null;
+// PERF-01：必须能被页面切换显式停止。原实现只在「归零」时 clearInterval，
+// 用户关掉活动详情/切走 Tab 后定时器仍在跑（元素已不存在，每秒空转一次全文查询），
+// signStartAt 在数天后时会连续空转几十万次。
+function stopSignCountdown() {
+  if (_signCountdownTimer) { clearInterval(_signCountdownTimer); _signCountdownTimer = null; }
+}
 function startSignCountdown(signStartAt) {
   if (!signStartAt) return;
   const target = new Date(signStartAt).getTime();
   if (!Number.isFinite(target)) return;
-  if (_signCountdownTimer) { clearInterval(_signCountdownTimer); _signCountdownTimer = null; }
+  stopSignCountdown();
   const pad = (n) => String(n).padStart(2, '0');
   const tick = () => {
+    // 目标节点已消失（详情关闭 / 切走 Tab）→ 自停，避免无意义空转
+    const cur = document.querySelector('.event-sign-countdown');
+    if (!cur) { stopSignCountdown(); return; }
     const left = target - Date.now();
     if (left <= 0) {
-      if (_signCountdownTimer) { clearInterval(_signCountdownTimer); _signCountdownTimer = null; }
-      const cur = document.querySelector('.event-sign-countdown');
-      if (cur) cur.textContent = '⏰ ' + (__('events.sign_open_now') || '报名已开放');
+      stopSignCountdown();
+      cur.textContent = '⏰ ' + (__('events.sign_open_now') || '报名已开放');
       const id = window._currentEventDetail && window._currentEventDetail.id;
       if (id && typeof showEventDetail === 'function') showEventDetail(id);
       return;
@@ -1383,11 +1391,11 @@ function startSignCountdown(signStartAt) {
     const text = days > 0
       ? `${days}${__('events.d_unit') || '天'} ${pad(hh)}:${pad(mm)}:${pad(ss)}`
       : `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
-    const cur = document.querySelector('.event-sign-countdown');
-    if (cur) cur.textContent = `⏰ ${__('events.sign_opens_in') || '距报名开放'} ${text}`;
+    cur.textContent = `⏰ ${__('events.sign_opens_in') || '距报名开放'} ${text}`;
   };
   tick();
-  _signCountdownTimer = setInterval(tick, 1000);
+  // tick 内可能已自停（元素不存在），此时不要再起定时器
+  if (!_signCountdownTimer) _signCountdownTimer = setInterval(tick, 1000);
 }
 
 let _eventsDelegationHandler = null;

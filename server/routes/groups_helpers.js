@@ -155,6 +155,33 @@ async function syncRosterFromVrc({ pool, groupId, vrcCookie, broadcast, syncTrus
     const [oldMembers] = await conn.query(`SELECT vrchat_id, vrchat_name, is_member FROM group_roster WHERE is_member=1`);
     const oldMap = new Map(oldMembers.map(m => [m.vrchat_id, m]));
 
+    const validMembers = allMembers.filter(m => m.userId)
+
+    // DET-01 熔断：下面第 158 行会先把全部成员置 is_member=0 再按新名单 upsert。
+    // 若上游返回 200 但数据为空/异常骤降（VRChat 偶发空数组、权限临时变化、
+    // 上游分页失效只回第一页），会把整个群误判为「全员退群」，并写出几百条
+    // left 变更记录 + 触发退群通知，且不可自动回滚。
+    // 因此写库前做两道校验：空名单一律中止；骤降超过 50% 视为上游异常，中止并告警。
+    // 注意：正常的小幅减员（<50%）仍放行；首次同步（oldMap.size===0）不做骤降判断。
+    if (validMembers.length === 0) {
+      await conn.rollback();
+      logger.error('groups', '名册同步熔断：上游返回 0 名有效成员，已中止写库（保留原有名册）');
+      const e0 = new Error('VRChat 返回的成员列表为空，已中止同步以避免误判全员退群');
+      e0.upstreamStatus = 502;
+      throw e0;
+    }
+    if (oldMap.size > 0 && validMembers.length < oldMap.size * 0.5) {
+      await conn.rollback();
+      logger.error('groups',
+        `名册同步熔断：新名单 ${validMembers.length} 人，仅为现有 ${oldMap.size} 人的 ` +
+        `${Math.round(validMembers.length / oldMap.size * 100)}%（骤降 >50%），已中止写库（保留原有名册）`);
+      const e1 = new Error(
+        `上游返回的成员数（${validMembers.length}）远少于本地现有（${oldMap.size}），疑似 VRChat 数据异常，已中止同步`);
+      e1.upstreamStatus = 502;
+      e1.upstreamData = { received: validMembers.length, local: oldMap.size };
+      throw e1;
+    }
+
     await conn.query(`UPDATE group_roster SET is_member=0 WHERE is_member=1`);
 
     let joinedCount = 0, updatedCount = 0;
@@ -163,8 +190,6 @@ async function syncRosterFromVrc({ pool, groupId, vrcCookie, broadcast, syncTrus
 
     const [allRows] = await conn.query(`SELECT vrchat_id FROM group_roster`);
     const existingIds = new Set(allRows.map(r => r.vrchat_id));
-
-    const validMembers = allMembers.filter(m => m.userId);
     const CHUNK = SYNC_CHUNK;
     for (let i = 0; i < validMembers.length; i += CHUNK) {
       const chunk = validMembers.slice(i, i + CHUNK);

@@ -1322,6 +1322,7 @@ window._LANG_DE = {
   "rtc.incoming": "lädt Sie zu einem Anruf ein",
   "rtc.accept": "Annehmen",
   "rtc.decline": "Ablehnen",
+  "rtc.missed_call": "Verpasster Anruf (nach 45 s ohne Antwort abgebrochen)",
   "rtc.busy": "Der Gesprächspartner ist beschäftigt",
   "rtc.offline": "Der Gesprächspartner ist offline",
   "rtc.media_error": "Mikrofon/Kamera konnte nicht zugegriffen werden. Bitte prüfen Sie die Browsereinstellungen",

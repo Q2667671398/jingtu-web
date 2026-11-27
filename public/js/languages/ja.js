@@ -1322,6 +1322,7 @@ window._LANG_JA = {
   "rtc.incoming": "通話の着信",
   "rtc.accept": "応答",
   "rtc.decline": "拒否",
+  "rtc.missed_call": "不在着信（45秒応答なしで自動キャンセル）",
   "rtc.busy": "相手は通話中です",
   "rtc.offline": "相手はオフラインです",
   "rtc.media_error": "マイク/カメラを利用できません。ブラウザ設定を確認してください",

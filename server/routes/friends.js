@@ -268,10 +268,16 @@ module.exports = function (notificationService) {
         return sendError(res, 400, ErrorCodes.BAD_REQUEST, '参数错误');
       }
       const pool = getPool();
-      // 双向清除（无论 accepted / pending / blocked 视角），非好友则 404
+      // SEC-01 修复：blocked 是**单向语义**（user_id = 拉黑者）。
+      // 原实现无条件双向删除，导致被拉黑者调本接口即可抹掉对方对自己的 blocked 行，
+      // 从而绕过 chat.js / follows.js / ws_service.js 唯一的拉黑校验（拉黑形同虚设）。
+      // 现口径：
+      //   · 我 → 对方：允许删除（含我自设的 blocked，等价于取消拉黑）
+      //   · 对方 → 我：只删非 blocked 行，绝不动对方对我的拉黑
       const [r] = await pool.query(
         `DELETE FROM user_friends
-         WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)`,
+         WHERE (user_id = ? AND friend_id = ?)
+            OR (user_id = ? AND friend_id = ? AND status <> 'blocked')`,
         [me, otherId, otherId, me]
       );
       if (r.affectedRows === 0) {
@@ -318,8 +324,11 @@ module.exports = function (notificationService) {
            ON DUPLICATE KEY UPDATE status = 'blocked', requested_by = VALUES(requested_by), updated_at = CURRENT_TIMESTAMP`,
           [me, targetUserId, me]
         );
+        // SEC-01 修复：清除对称行时**必须排除 blocked**。
+        // 否则「被拉黑者反手拉黑对方」这一步会把对方对我的 blocked 行删掉，同样绕开校验。
+        // 现在两条 blocked 允许并存（互拉黑），语义更符合直觉。
         await conn.query(
-          `DELETE FROM user_friends WHERE user_id = ? AND friend_id = ?`,
+          `DELETE FROM user_friends WHERE user_id = ? AND friend_id = ? AND status <> 'blocked'`,
           [targetUserId, me]
         );
         // 拉黑同时解除双向关注

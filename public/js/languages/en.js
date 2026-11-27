@@ -1294,6 +1294,7 @@ window._LANG_EN = {
   "rtc.incoming": "is calling you",
   "rtc.accept": "Accept",
   "rtc.decline": "Decline",
+  "rtc.missed_call": "Missed call (auto-cancelled after 45s without answer)",
   "rtc.busy": "The other party is busy",
   "rtc.offline": "The other party is offline",
   "rtc.media_error": "Unable to access microphone/camera. Please check browser settings",

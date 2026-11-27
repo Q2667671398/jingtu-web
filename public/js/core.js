@@ -1164,11 +1164,16 @@ window.DEFAULT_TRUST_COLOR = '#ffd700';
     if (e.key !== 'Enter' && e.key !== ' ') return;
     var t = e.target;
     if (!t || !t.closest) return;
+    var tag = (t.tagName || '').toLowerCase();
+    // 输入类元素内的 Space 不应被拦截
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    // UX-01 修复：原生可点击元素让浏览器自己处理。
+    // 原实现用 t.closest('[data-action][tabindex]') 会命中**祖先卡片**，
+    // 把卡片内 ✏️/🗑️/📞 等原生 button 的 Enter 劫持成「打开卡片」，
+    // 导致键盘用户无法编辑/删除/操作卡片内的任何按钮。
+    if (tag === 'button' || tag === 'a') return;
     var el = t.closest('[data-action][tabindex]');
     if (!el) return;
-    // 输入类元素内的 Space 不应被拦截
-    var tag = (t.tagName || '').toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
     e.preventDefault();
     el.click();
   });

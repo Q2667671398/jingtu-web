@@ -15,6 +15,8 @@ let rtcPttTimer = 0;
 let rtcPttStartedAt = 0;
 let rtcAudioCtx = null;                // 音效 AudioContext（懒加载、用户手势解锁）
 let rtcRingTimer = 0;                  // 来电铃声循环定时器
+let rtcRingTimeout = 0;                // PERF-02：振铃超时（无人接听自动取消）
+const RTC_RING_TIMEOUT_MS = 45000;     // 45 秒未接听即自动取消
 const rtcVolumeWatchers = new Map();   // 音量监视器：key -> stop()
 let rtcRemoteStream = null;            // 当前通话已挂载的远端流（重建浮层时用于重挂音量监视）
 
@@ -89,13 +91,30 @@ function rtcPlayRing() {
   rtcTone(880, 0.16, 'sine', 0.09, 0);
   rtcTone(880, 0.16, 'sine', 0.09, 0.28);
   rtcRingTimer = setInterval(() => {
+    // 后台标签不响铃（省电、也避免用户找不到来源）；回前台由 visibilitychange 恢复
+    if (document.hidden) return;
     rtcTone(880, 0.16, 'sine', 0.09, 0);
     rtcTone(880, 0.16, 'sine', 0.09, 0.28);
   }, 700);
+  // PERF-02：振铃必须有终点。原实现无人接听就一直响，
+  // 每个 tick 新建 2 个 Oscillator + 2 个 GainNode，一天可达 49 万个 WebAudio 节点。
+  if (rtcRingTimeout) clearTimeout(rtcRingTimeout);
+  rtcRingTimeout = setTimeout(() => {
+    rtcRingTimeout = 0;
+    // 仍在响铃（未被接听、也未被对方取消）→ 自动取消本次来电
+    if (!rtcPrivate || rtcPrivate.status !== 'ringing') return;
+    try { rtcSend({ type: 'rtc:cancel', targetId: rtcPrivate.peerId }); } catch (e) { /* ignore */ }
+    hideRtcIncomingPopup();
+    rtcClearPrivate();
+    if (typeof toast === 'function') {
+      toast(__('rtc.missed_call') || '未接来电（45 秒无应答已自动取消）', 'info');
+    }
+  }, RTC_RING_TIMEOUT_MS);
 }
 
 function rtcStopRing() {
   if (rtcRingTimer) { clearInterval(rtcRingTimer); rtcRingTimer = 0; }
+  if (rtcRingTimeout) { clearTimeout(rtcRingTimeout); rtcRingTimeout = 0; }
 }
 
 function rtcPlayConnected() { rtcTone(660, 0.12, 'sine', 0.1, 0); rtcTone(880, 0.16, 'sine', 0.1, 0.12); }
