@@ -1020,6 +1020,8 @@ async function profileLikeUser() {
   const likeStatus = document.getElementById('profileLikeStatus');
 
   try {
+    // UX-18：点击即禁用，防连点发两次请求导致计数跳动
+    if (likeBtn) likeBtn.disabled = true;
     if (_profileLikedToday) {
       // 已赞 → 取消点赞
       const res = await api(`/api/user-like/${profileUserId}/like`, { method: 'DELETE' });
@@ -1034,6 +1036,11 @@ async function profileLikeUser() {
           likeBtn.title = '';
         }
         if (likeStatus) likeStatus.textContent = __('likes.daily_once');
+      } else {
+        // UX-18：原无 else，400/403 静默失败
+        let m = __('likes.like_failed');
+        try { const d = await res.json(); m = errText(d) || m; } catch (e) { /* ignore */ }
+        toast(m, 'error');
       }
     } else {
       // 未赞 → 点赞
@@ -1049,11 +1056,18 @@ async function profileLikeUser() {
           likeBtn.title = __('album.unliked');
         }
         if (likeStatus) likeStatus.textContent = __('likes.today_liked');
+      } else {
+        // UX-18：原无 else，400/403（如今日已赞/无权限）静默失败
+        let m = __('likes.like_failed');
+        try { const d = await res.json(); m = errText(d) || m; } catch (e) { /* ignore */ }
+        toast(m, 'error');
       }
     }
   } catch (err) {
-    if (isApiHandledError(err)) return;
-    toast(__('likes.like_failed'), 'error');
+    if (!isApiHandledError(err)) toast(__('likes.like_failed'), 'error');
+  } finally {
+    // UX-18：无论成功失败都恢复可点击（防连点）
+    if (likeBtn) likeBtn.disabled = false;
   }
 }
 

@@ -470,9 +470,10 @@ async function loadHomeUpcomingEvents() {
       </div>`;
     }).join('');
   } catch (err) {
-    if (!isApiHandledError(err)) {
-      renderEmpty(container, { icon: '⚠️', text: __('load_failed') });
-    }
+    // UX-02：原 `if (!isApiHandledError(err))` 在 5xx/超时/429（已被 api() 处理）时
+    // 会直接跳过渲染 → 页面永久停在骨架屏动画。现在无条件给出失败态 + 重试。
+    if (typeof renderLoadFailed === 'function') renderLoadFailed(container, loadHomeUpcomingEvents);
+    else renderEmpty(container, { icon: '⚠️', text: __('load_failed') });
   }
 }
 
@@ -505,9 +506,10 @@ async function loadHomeLatestPosts() {
       </div>`;
     }).join('');
   } catch (err) {
-    if (!isApiHandledError(err)) {
-      container.innerHTML = '';
-    }
+    // UX-02：原实现只在非 API 已处理错误时清空，5xx 时保留骨架屏。
+    // 改为统一失败态 + 重试（动态流可重试，不该静默留白）。
+    if (typeof renderLoadFailed === 'function') renderLoadFailed(container, loadHomeLatestPosts);
+    else container.innerHTML = '';
   }
 }
 
@@ -532,7 +534,9 @@ async function loadHomeFeaturedPhotos() {
         + '</a>';
     }).join('');
   } catch (err) {
-    if (!isApiHandledError(err)) container.innerHTML = '';
+    // UX-02：同上，失败时给失败态而非静默清空
+    if (typeof renderLoadFailed === 'function') renderLoadFailed(container, loadHomeFeaturedPhotos);
+    else container.innerHTML = '';
   }
 }
 

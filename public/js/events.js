@@ -22,10 +22,18 @@ async function loadEvents(status = 'all') {
       const evtCount = document.getElementById('evtCount');
       if (evtCount) evtCount.textContent = `(${data.total != null ? data.total : eventsCache.length})`;
       if (typeof checkTabBadges === 'function') checkTabBadges();
+    } else {
+      // UX-12：原实现只有 if (res.ok)，400（如 status 参数异常）会让骨架屏永驻
+      if (container && typeof renderLoadFailed === 'function') {
+        renderLoadFailed(container, () => loadEvents(status));
+      }
     }
   } catch (err) {
-    if (isApiHandledError(err)) return;
-    toast(__('events.load_failed'), 'error');
+    // UX-12：无论是否被 api() 处理过，都不能留下骨架屏
+    if (container && typeof renderLoadFailed === 'function') {
+      renderLoadFailed(container, () => loadEvents(status));
+    }
+    if (!isApiHandledError(err)) toast(__('events.load_failed'), 'error');
   } finally {
     eventsLoading = false;
   }

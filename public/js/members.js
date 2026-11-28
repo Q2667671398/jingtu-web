@@ -1,4 +1,4 @@
-// ==================== 成员列表 ====================
+﻿// ==================== 成员列表 ====================
 let membersLoading = false;
 let membersSearchTimer = null;
 
@@ -725,6 +725,9 @@ async function saveMemberNote() {
   }
   const noteTags = tagsEl ? tagsEl.value.split(',').map(s => s.trim()).filter(Boolean) : [];
   
+  // UX-19：保存按钮补 disable，防双击创建两条重复备注
+  const saveBtn = document.querySelector('[data-action="note-save"]');
+  if (saveBtn) saveBtn.disabled = true;
   try {
     const res = await api(`/api/users/${currentNoteUserId}/notes`, {
       method: 'POST',
@@ -741,6 +744,8 @@ async function saveMemberNote() {
   } catch (e) {
     if (errorEl) errorEl.textContent = __('members.notes_save_failed');
     if (errorEl) errorEl.classList.remove('d-none');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
   }
 }
 
@@ -815,6 +820,9 @@ async function submitUserReport() {
     if (errorEl) { errorEl.textContent = __('members.report_reason_empty'); errorEl.classList.remove('d-none'); }
     return;
   }
+  // UX-19：举报按钮补 disable，防双击重复上报
+  const reportBtn = document.querySelector('[data-action="report-submit"]');
+  if (reportBtn) reportBtn.disabled = true;
   try {
     const res = await api('/api/moderations', {
       method: 'POST',
@@ -829,6 +837,8 @@ async function submitUserReport() {
     }
   } catch (e) {
     if (errorEl) { errorEl.textContent = __('members.report_failed'); errorEl.classList.remove('d-none'); }
+  } finally {
+    if (reportBtn) reportBtn.disabled = false;
   }
 }
 

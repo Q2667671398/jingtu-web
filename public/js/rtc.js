@@ -219,12 +219,28 @@ function rtcIsUserOnline(userId) {
   return !!(window.onlineUsersList || []).some(u => String(u.userId) === String(userId));
 }
 
+// UX-03：发起通话的同步占位锁。
+// 忙碌判断读 rtcPrivate.status，但 rtcPrivate 要等 getUserMedia + ensureRtcIce 两次 await
+// 之后才赋值 —— 这期间的连点完全没有拦截，会连续申请两次麦克风权限并发出两条 rtc:invite，
+// 对端收到两个来电。用同步置位的布尔锁先挡住。
+let _rtcStartingCall = false;
+
 async function startPrivateCall(userId, callType) {
   if (!currentUser) { toast(__('please_login'), 'error'); return; }
   if (String(userId) === String(currentUser.id)) { toast(__('chat.cant_self'), 'info'); return; }
   if (rtcPrivate && rtcPrivate.status !== 'idle') { toast(__('rtc.busy'), 'error'); return; }
   if (rtcGroupRoom) { toast(__('rtc.busy'), 'error'); return; }
   if (!rtcIsUserOnline(userId)) { toast(__('rtc.offline'), 'error'); return; }
+  if (_rtcStartingCall) { toast(__('rtc.busy'), 'info'); return; }
+  _rtcStartingCall = true;
+  try {
+    return await _startPrivateCallInner(userId, callType);
+  } finally {
+    _rtcStartingCall = false;
+  }
+}
+
+async function _startPrivateCallInner(userId, callType) {
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: RTC_AUDIO, video: callType === 'video' });

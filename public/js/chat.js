@@ -263,6 +263,11 @@ async function openChat(userId) {
   } catch (e) { if (isApiHandledError(e)) return; renderEmpty(document.getElementById('chatBox'), { icon: '⚠️', text: __('chat.load_failed') }); }
 }
 
+// UX-06：WS 发送后输入框已清空。若服务端回 chat:error（被拉黑/非成员/抖动），
+// 必须把刚发的内容回填，否则用户整段文字丢失只能重打。
+// 记住「最后一次待发内容」，由 chat:error 分支消费。
+let _pendingChatText = '';
+
 async function sendChatMessage() {
   const input = document.getElementById('chatInput');
   if (!input) return;
@@ -272,12 +277,14 @@ async function sendChatMessage() {
 
   if (chatActiveGroupId) {
     // 群聊消息
+    _pendingChatText = content;
     sendGroupMessage(chatActiveGroupId, content);
     return;
   }
   if (!chatActiveUserId) return;
 
   if (wsClient && wsClient.readyState === WebSocket.OPEN) {
+    _pendingChatText = content;
     wsClient.send(JSON.stringify({ type: 'chat:send', receiverId: chatActiveUserId, content, userId: currentUser.id }));
     return;
   }
@@ -666,6 +673,8 @@ function handleChatMessage(msg) {
     }
   }
   if (msg.type === 'chat:sent') {
+    // UX-06：发送成功 → 清掉待回填内容，避免后续无关的 chat:error 误回填旧文本
+    _pendingChatText = '';
     const sentMsg = msg.message;
     if (!sentMsg) return;
     // 仅当仍处于对应私聊会话时才渲染回执，避免切走会话后消息串台显示到其它会话（聊天问题 9.1）
@@ -689,9 +698,19 @@ function handleChatMessage(msg) {
     }
     return;
   }
-  // WS 发送失败反馈（非成员/异常），避免静默丢消息
+  // WS 发送失败反馈（非成员/被拉黑/异常），避免静默丢消息
   if (msg.type === 'chat:error') {
     toast(errText(msg) || __('chat.send_failed'), 'error');
+    // UX-06：把刚发的内容回填到输入框（发送时已清空），避免用户整段文字丢失。
+    // 只在输入框当前为空时回填，避免覆盖用户已经开始输入的新内容。
+    if (_pendingChatText) {
+      const input = document.getElementById('chatInput');
+      if (input && !input.value.trim()) {
+        input.value = _pendingChatText;
+        input.focus();
+      }
+      _pendingChatText = '';
+    }
     return;
   }
   // 群聊实时位置（仅群内可见，不持久化）

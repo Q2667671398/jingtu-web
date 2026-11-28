@@ -318,8 +318,9 @@ summary:focus-visible {
     min-height: 40px;
   }
 
-  .btn-xs {
-    min-height: 34px;
+  /* UX-21: 移动端触屏目标 >=44px（WCAG 2.5.5），原 34px 误触率高 */
+.btn-xs {
+    min-height: 44px;
   }
 
   /* 移动端表单字号不得小于 16px，否则 iOS Safari 会自动放大页面 */

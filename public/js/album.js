@@ -107,10 +107,18 @@ async function loadAlbum(albumId = null) {
       if (loadMore) loadMore.style.display = data.hasMore ? '' : 'none';
       // F-09：无限滚动——还有更多时观察「加载更多」按钮，进入视口即自动加载。
       setupAlbumInfiniteScroll(data.hasMore);
+    } else {
+      // UX-13：原实现只有 if (res.ok)，4xx 会让首屏骨架屏永驻
+      if (container && albumPage === 1 && typeof renderLoadFailed === 'function') {
+        renderLoadFailed(container, () => loadAlbum());
+      }
     }
   } catch (err) {
-    if (isApiHandledError(err)) return;
-    toast(__('load_failed'), 'error');
+    // UX-13：失败时不留骨架屏
+    if (container && albumPage === 1 && typeof renderLoadFailed === 'function') {
+      renderLoadFailed(container, () => loadAlbum());
+    }
+    if (!isApiHandledError(err)) toast(__('load_failed'), 'error');
   } finally {
     albumLoading = false;
   }

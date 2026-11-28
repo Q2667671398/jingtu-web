@@ -674,7 +674,15 @@ async function loadNotifications(reset, skipVrcSync) {
       if (notifPage < (data.totalPages || 1)) {
         boxes.forEach(b => b.insertAdjacentHTML('beforeend', `<button class="notif-load-more" data-load-more="1">${__('ui.load_more') || __('auto_ui_1')}</button>`));
       }
-    }
+      } else {
+        // UX-11：原实现只处理 res.ok，非 2xx 且非异常的响应（400/404）会让骨架屏永驻
+        if (my !== _notifLoadSeq) return;
+        const msg = __('ui.load_failed') || '加载失败';
+        boxes.forEach(b => {
+          if (typeof renderLoadFailed === 'function') renderLoadFailed(b, () => loadNotifications(true));
+          else b.innerHTML = `<div class="notification-empty">${esc(msg)}</div>`;
+        });
+      }
   } catch {
     if (my !== _notifLoadSeq) return; // 过期请求的失败不回写 UI
     if (reset) {
@@ -909,6 +917,30 @@ function checkPwdMatch(inputId1, inputId2, matchId) {
         if (a && typeof a.onClick === 'function') btn.addEventListener('click', a.onClick);
       });
     }
+  };
+
+  /**
+   * 统一的「加载失败」兜底渲染（UX-02/11/12/13/14）。
+   *
+   * 解决的问题：多处列表在 catch（或 `if (!res.ok)` 无 else）里只留白 / 留骨架屏，
+   * 有的还因 `if (isApiHandledError(err)) return;` 直接跳过渲染 →
+   * 页面永久停在骨架屏微光动画，用户以为还在加载。
+   *
+   * 用法：catch 里**无条件**调用本函数，失败态一定带「重试」按钮。
+   * @param {HTMLElement} el 目标容器
+   * @param {Function} [retryFn] 重试回调；不传则只提示不给按钮
+   * @param {string} [text] 自定义失败文案
+   */
+  window.renderLoadFailed = function (el, retryFn, text) {
+    if (!el) return;
+    const actions = (typeof retryFn === 'function')
+      ? [{ label: (typeof __ === 'function' && __('common.retry')) || '重试', cls: 'btn btn-outline btn-sm', onClick: retryFn }]
+      : undefined;
+    window.renderEmpty(el, {
+      icon: '⚠️',
+      text: text || (typeof __ === 'function' && __('load_failed')) || '加载失败，请稍后重试',
+      actions: actions
+    });
   };
 
   /**

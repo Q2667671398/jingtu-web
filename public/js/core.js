@@ -894,20 +894,38 @@ function createOverlayDialog(contentHtml, onConfirm, onCancel) {
   // 避免"在弹窗 A 内触发确认/输入框，A 被 closeAllModals 收掉后不再回来"。
   const _prevEl = document.querySelector('.modal.show');
   const _prevModalId = (_prevEl && _prevEl.id !== 'confirmModal') ? _prevEl.id : null;
+  // UX-20：记录打开前的焦点元素，关闭后归还
+  const _prevFocus = document.activeElement;
   // 覆盖层 z-index 高于 .modal（400），但打开前仍先把已开的弹窗全部收起：
   // 否则成员名片等弹窗还悬在页面上，用户看到新弹窗叠在旧弹窗后面还要手动关。
   closeAllModals();
   const overlay = document.createElement('div');
   overlay.className = 'confirm-overlay';
+  // UX-20：.confirm-overlay 此前不在无障碍体系内（无 role/aria-modal、无焦点陷阱、无 Esc），
+  // 屏幕阅读器不播报确认内容、Tab 会跑到背后页面元素。这里补齐对话框语义。
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('tabindex', '-1');
   overlay.innerHTML = contentHtml;
   document.body.appendChild(overlay);
+  // 用对话框内标题作可访问名称；没有标题则退回 aria-label 兜底
+  const _titleEl = overlay.querySelector('.confirm-title, .modal-title, h3, strong');
+  if (_titleEl) {
+    if (!_titleEl.id) _titleEl.id = 'confirmDlgTitle' + ((window.__confirmTitleSeq = (window.__confirmTitleSeq || 0) + 1));
+    overlay.setAttribute('aria-labelledby', _titleEl.id);
+  } else {
+    overlay.setAttribute('aria-label', (typeof __('common.confirm') === 'string' ? __('common.confirm') : 'Confirm'));
+  }
   // M8: 确认/输入覆盖层同样锁定背景滚动（与标准 .modal 一致），避免滚轮带动背后页面
   const _ovSeq = (window.__overlaySeq = (window.__overlaySeq || 0) + 1);
   const _ovOwner = 'confirm-overlay:' + _ovSeq;
   if (typeof lockBodyScroll === 'function') lockBodyScroll(_ovOwner);
   const cleanup = function(result) {
     if (typeof unlockBodyScroll === 'function') unlockBodyScroll(_ovOwner);
+    document.removeEventListener('keydown', _onKeydown, true);
     overlay.remove();
+    // UX-20：归还焦点到打开前的元素
+    try { if (_prevFocus && _prevFocus.focus) _prevFocus.focus(); } catch (e) { /* ignore */ }
     if (result === 'confirm' && onConfirm) onConfirm();
     if (result === 'cancel' && onCancel) onCancel();
     // M8: 恢复被 closeAllModals 收起的原弹窗（若用户是从某弹窗内触发的）
@@ -921,6 +939,47 @@ function createOverlayDialog(contentHtml, onConfirm, onCancel) {
   if (okBtn) okBtn.onclick = () => cleanup('confirm');
   if (cancelBtn) cancelBtn.onclick = () => cleanup('cancel');
   overlay.onclick = (e) => { if (e.target === overlay) cleanup('cancel'); };
+
+  // UX-20：Esc 关闭 + Tab 焦点陷阱（焦点只在对话框内循环）
+  const _onKeydown = function (e) {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      e.preventDefault();
+      cleanup('cancel');
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const focusables = overlay.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (!overlay.contains(document.activeElement)) {
+      e.preventDefault();
+      first.focus();
+      return;
+    }
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  document.addEventListener('keydown', _onKeydown, true);
+
+  // 打开后把焦点移入对话框（优先确认按钮）
+  setTimeout(function () {
+    if (!document.body.contains(overlay)) return;
+    const target = okBtn || overlay.querySelector(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (target && target.focus) target.focus();
+    else overlay.focus();
+  }, 0);
+
   return overlay;
 }
 

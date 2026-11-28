@@ -65,6 +65,13 @@
     if (Math.abs(dx) < MIN_DX || Math.abs(dy) > MAX_DY) return;
     if (Math.abs(dx) < Math.abs(dy) * 1.6) return; // 需要明显的横向意图
 
+    // UX-25：有覆盖层打开时不切 Tab。原来在相册灯箱/图片查看器里横滑，
+    // 会切走底层 Tab，但灯箱不关闭、body 仍被 lockBodyScroll 锁着 → 页面卡死只能刷新。
+    if (document.querySelector(
+      '.lightbox.show, .modal.show, .confirm-overlay, ' +
+      '.media-viewer-overlay, .rtc-incoming-popup, #chatPanel.chat-detail-open'
+    )) return;
+
     var cur = currentTab();
     var idx = TAB_ORDER.indexOf(cur);
     if (idx === -1) return;
